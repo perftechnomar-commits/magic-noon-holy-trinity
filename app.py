@@ -283,6 +283,198 @@ BOILER_FILTER_COLUMNS = [
 st.set_page_config(page_title=APP_TITLE, layout="wide")
 
 
+def inject_app_css() -> None:
+    st.markdown(
+        """
+        <style>
+        .block-container {
+            max-width: 1480px;
+            padding-top: 1.5rem;
+            padding-bottom: 2rem;
+        }
+
+        [data-testid="stSidebar"] {
+            border-right: 1px solid rgba(128, 128, 128, 0.22);
+        }
+
+        [data-testid="stSidebar"] h2,
+        [data-testid="stSidebar"] h3 {
+            font-size: 1rem;
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 750;
+            margin-bottom: 0.2rem;
+        }
+
+        h2, h3 {
+            font-weight: 700;
+        }
+
+        .app-header {
+            border-bottom: 1px solid rgba(128, 128, 128, 0.24);
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+        }
+
+        .app-eyebrow {
+            color: #66b3a6;
+            font-size: 0.82rem;
+            font-weight: 700;
+            margin-bottom: 0.2rem;
+        }
+
+        .app-subtitle {
+            color: rgba(250, 250, 250, 0.68);
+            font-size: 0.95rem;
+            max-width: 880px;
+        }
+
+        .kpi-card {
+            border: 1px solid rgba(128, 128, 128, 0.22);
+            border-left: 5px solid var(--accent);
+            border-radius: 8px;
+            padding: 0.9rem 1rem;
+            min-height: 116px;
+            background: rgba(255, 255, 255, 0.035);
+        }
+
+        .kpi-label {
+            color: rgba(250, 250, 250, 0.68);
+            font-size: 0.76rem;
+            font-weight: 700;
+            letter-spacing: 0;
+            margin-bottom: 0.45rem;
+        }
+
+        .kpi-value {
+            color: var(--accent);
+            font-size: 1.7rem;
+            font-weight: 800;
+            line-height: 1.15;
+        }
+
+        .kpi-footnote {
+            color: rgba(250, 250, 250, 0.55);
+            font-size: 0.74rem;
+            margin-top: 0.45rem;
+        }
+
+        .tone-good {
+            --accent: #4fb286;
+        }
+
+        .tone-watch {
+            --accent: #d8a545;
+        }
+
+        .tone-alert {
+            --accent: #cf5f5f;
+        }
+
+        .tone-info {
+            --accent: #5f9ea0;
+        }
+
+        .tone-neutral {
+            --accent: #9a8fcb;
+        }
+
+        [data-testid="stMetric"] {
+            border: 1px solid rgba(128, 128, 128, 0.22);
+            border-left: 4px solid #66b3a6;
+            border-radius: 8px;
+            padding: 0.85rem 0.95rem;
+            background: rgba(255, 255, 255, 0.035);
+        }
+
+        [data-testid="stMetricLabel"] p {
+            color: rgba(250, 250, 250, 0.72);
+            font-size: 0.78rem;
+            font-weight: 650;
+        }
+
+        [data-testid="stMetricValue"] {
+            font-size: 1.55rem;
+            font-weight: 750;
+        }
+
+        [data-testid="stTabs"] button {
+            padding-top: 0.55rem;
+            padding-bottom: 0.55rem;
+        }
+
+        [data-testid="stTabs"] button p {
+            font-weight: 650;
+        }
+
+        .stDataFrame {
+            border: 1px solid rgba(128, 128, 128, 0.2);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        div.stButton > button {
+            border-radius: 6px;
+            font-weight: 650;
+        }
+
+        .section-note {
+            color: rgba(250, 250, 250, 0.62);
+            font-size: 0.88rem;
+            margin-top: -0.35rem;
+            margin-bottom: 0.8rem;
+        }
+
+        @media (prefers-color-scheme: light) {
+            .app-subtitle,
+            .section-note {
+                color: rgba(32, 38, 46, 0.68);
+            }
+
+            [data-testid="stMetric"] {
+                background: rgba(32, 38, 46, 0.025);
+            }
+
+            .kpi-card {
+                background: rgba(32, 38, 46, 0.025);
+            }
+
+            .kpi-label {
+                color: rgba(32, 38, 46, 0.68);
+            }
+
+            .kpi-footnote {
+                color: rgba(32, 38, 46, 0.55);
+            }
+
+            [data-testid="stMetricLabel"] p {
+                color: rgba(32, 38, 46, 0.72);
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_app_header() -> None:
+    st.markdown(
+        """
+        <div class="app-header">
+            <div class="app-eyebrow">Magic Noon alla Mantalos</div>
+            <h1>Fleet Performance Dashboard</h1>
+            <div class="app-subtitle">
+                Excel-equivalent calculations from Marorka OData, optimized for fleet-level filtering,
+                vessel review, and operational KPI monitoring.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def get_secret(name: str, default: str = "") -> str:
     try:
         return str(st.secrets.get(name, default) or "")
@@ -1136,7 +1328,11 @@ def section_dataframe(row: pd.Series, section_columns: list[str]) -> pd.DataFram
 
 
 def render_report_presentation(pivot_df: pd.DataFrame) -> None:
-    st.subheader("Report Presentation")
+    st.markdown("### Single Report Detail")
+    st.markdown(
+        '<div class="section-note">Select one vessel and report timestamp to review calculated performance, consumption, and operating data.</div>',
+        unsafe_allow_html=True,
+    )
     vessel_df, selected_row, previous_row = report_selector(pivot_df)
 
     header_columns = st.columns([2, 1, 1, 1])
@@ -1150,11 +1346,11 @@ def render_report_presentation(pivot_df: pd.DataFrame) -> None:
     time_columns[1].metric("End GMT", format_datetime(selected_row.get("EndDateTimeGMT")))
     time_columns[2].metric("Lap Time", format_value(selected_row.get("LapTime")))
 
-    st.divider()
+    st.markdown("### Key Metrics")
     render_metric_cards(selected_row, previous_row)
     st.caption("Deltas compare against the previous report for the same vessel when numeric values are available.")
 
-    st.divider()
+    st.markdown("### Report Sections")
     section_names = list(REPORT_SECTIONS.keys())
     for chunk_start in range(0, len(section_names), 2):
         columns = st.columns(2)
@@ -1262,6 +1458,76 @@ def format_percentage(value: object) -> str:
     return f"{numeric_value:.1%}"
 
 
+def numeric_scalar(value: object) -> float | None:
+    numeric_value = pd.to_numeric(pd.Series([value]), errors="coerce").iloc[0]
+    if pd.isna(numeric_value):
+        return None
+    return float(numeric_value)
+
+
+def tone_for_slip(value: object) -> str:
+    numeric_value = numeric_scalar(value)
+    if numeric_value is None:
+        return "tone-neutral"
+    if numeric_value <= 0.10:
+        return "tone-good"
+    if numeric_value <= 0.20:
+        return "tone-watch"
+    return "tone-alert"
+
+
+def tone_for_me_load(value: object) -> str:
+    numeric_value = numeric_scalar(value)
+    if numeric_value is None:
+        return "tone-neutral"
+    if 0.30 <= numeric_value <= 0.85:
+        return "tone-good"
+    if 0.10 <= numeric_value < 0.30 or 0.85 < numeric_value <= 0.95:
+        return "tone-watch"
+    return "tone-alert"
+
+
+def tone_for_sfoc(value: object) -> str:
+    numeric_value = numeric_scalar(value)
+    if numeric_value is None:
+        return "tone-neutral"
+    if numeric_value <= 185:
+        return "tone-good"
+    if numeric_value <= 205:
+        return "tone-watch"
+    return "tone-alert"
+
+
+def tone_for_boiler(value: object) -> str:
+    numeric_value = numeric_scalar(value)
+    if numeric_value is None:
+        return "tone-neutral"
+    if numeric_value <= 0:
+        return "tone-good"
+    if numeric_value <= 1:
+        return "tone-watch"
+    return "tone-alert"
+
+
+def render_kpi_card(
+    column,
+    label: str,
+    value: str,
+    footnote: str,
+    tone: str,
+) -> None:
+    column.markdown(
+        f"""
+        <div class="kpi-card {tone}">
+            <div class="kpi-label">{label}</div>
+            <div class="kpi-value">{value}</div>
+            <div class="kpi-footnote">{footnote}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def parse_optional_float(value: str) -> float | None:
     if not value.strip():
         return None
@@ -1289,23 +1555,39 @@ def render_dashboard_kpis(filtered_df: pd.DataFrame, boiler_df: pd.DataFrame) ->
             return pd.NA
         return filtered_df["EndDateTimeGMT"].max()
 
+    slip_value = mean_metric(filtered_df, "Calculated Slip")
+    me_load_value = mean_metric(filtered_df, "ME Load [%MCR]")
+    sfoc_value = mean_metric(filtered_df, "SFOC [gr/Kwh]")
+    boiler_value = sum_metric(boiler_df, "Boiler Sum")
+
     kpi_columns = st.columns(4)
-    kpi_columns[0].metric(
+    render_kpi_card(
+        kpi_columns[0],
         "Average of Calculated Slip",
-        format_percentage(mean_metric(filtered_df, "Calculated Slip")),
+        format_percentage(slip_value),
+        "Main filters",
+        tone_for_slip(slip_value),
     )
-    kpi_columns[1].metric(
+    render_kpi_card(
+        kpi_columns[1],
         "Average of ME Load [%MCR]",
-        format_percentage(mean_metric(filtered_df, "ME Load [%MCR]")),
+        format_percentage(me_load_value),
+        "Main filters",
+        tone_for_me_load(me_load_value),
     )
-    kpi_columns[2].metric(
+    render_kpi_card(
+        kpi_columns[2],
         "Average of SFOC [gr/Kwh]",
-        format_value(mean_metric(filtered_df, "SFOC [gr/Kwh]")),
+        format_value(sfoc_value),
+        "Main filters",
+        tone_for_sfoc(sfoc_value),
     )
-    kpi_columns[3].metric(
+    render_kpi_card(
+        kpi_columns[3],
         "Sum of Boiler Sum",
-        format_value(sum_metric(boiler_df, "Boiler Sum")),
-        help="This KPI uses the independent Boiler KPI Filters, not the main KPI/table filters.",
+        format_value(boiler_value),
+        "Independent boiler filters",
+        tone_for_boiler(boiler_value),
     )
 
     context_columns = st.columns(3)
@@ -1326,7 +1608,57 @@ def render_dashboard_table(filtered_df: pd.DataFrame, visible_columns: list[str]
         available_columns = filtered_df.columns.tolist()
 
     table_df = filtered_df.sort_values("EndDateTimeGMT", ascending=False)[available_columns]
-    st.dataframe(table_df, use_container_width=True, hide_index=True)
+    styled_table = style_report_table(table_df)
+    st.dataframe(styled_table, use_container_width=True, hide_index=True)
+
+
+def cell_tone_style(value: object, tone_function) -> str:
+    tone = tone_function(value)
+    if tone == "tone-good":
+        return "background-color: rgba(79, 178, 134, 0.18); color: #78d3aa; font-weight: 700;"
+    if tone == "tone-watch":
+        return "background-color: rgba(216, 165, 69, 0.18); color: #e5bd65; font-weight: 700;"
+    if tone == "tone-alert":
+        return "background-color: rgba(207, 95, 95, 0.20); color: #ee8a8a; font-weight: 700;"
+    return ""
+
+
+def style_report_table(table_df: pd.DataFrame):
+    styled = table_df.style
+    conditional_columns = {
+        "Calculated Slip": tone_for_slip,
+        "ME Load [%MCR]": tone_for_me_load,
+        "SFOC [gr/Kwh]": tone_for_sfoc,
+        "Boiler Sum": tone_for_boiler,
+        "Consumption Boiler 24 Hours [MT]": tone_for_boiler,
+    }
+    for column, tone_function in conditional_columns.items():
+        if column in table_df.columns:
+            styled = styled.map(
+                lambda value, fn=tone_function: cell_tone_style(value, fn),
+                subset=[column],
+            )
+
+    percentage_columns = [
+        column
+        for column in [
+            "Calculated Slip",
+            "ME Load [%MCR]",
+            "Load per Generator [% MCR]",
+            "Difference Percentage",
+            "Difference Percentage2",
+            "Difference Percentage3",
+        ]
+        if column in table_df.columns
+    ]
+    numeric_columns = [
+        column
+        for column in table_df.select_dtypes(include="number").columns
+        if column not in percentage_columns
+    ]
+    formatters = {column: "{:.1%}" for column in percentage_columns}
+    formatters.update({column: "{:,.3f}" for column in numeric_columns})
+    return styled.format(formatters, na_rep="-")
 
 
 def render_operational_dashboard(
@@ -1338,25 +1670,38 @@ def render_operational_dashboard(
         st.warning("No reports match the current filters.")
         return
 
+    st.markdown("### Fleet KPIs")
+    st.markdown(
+        '<div class="section-note">Slip, ME load, and SFOC use the main dashboard filters. Boiler uses its own independent filter set.</div>',
+        unsafe_allow_html=True,
+    )
     render_dashboard_kpis(filtered_df, boiler_df)
 
-    st.subheader("Latest report by vessel")
+    st.markdown("### Latest Report By Vessel")
+    st.markdown(
+        '<div class="section-note">Most recent report available inside the selected data window and current filters.</div>',
+        unsafe_allow_html=True,
+    )
     latest_columns = [column for column in DEFAULT_TABLE_COLUMNS if column in filtered_df.columns]
     st.dataframe(
-        latest_by_vessel(filtered_df)[latest_columns],
+        style_report_table(latest_by_vessel(filtered_df)[latest_columns]),
         use_container_width=True,
         hide_index=True,
     )
 
-    st.subheader("Filtered report table")
+    st.markdown("### Filtered Report Table")
+    st.markdown(
+        '<div class="section-note">Detailed rows behind the KPIs, sorted by latest report time.</div>',
+        unsafe_allow_html=True,
+    )
     render_dashboard_table(filtered_df, visible_columns)
 
 
 if not require_dashboard_password():
     st.stop()
 
-st.title(APP_TITLE)
-st.caption("Fleet performance dashboard powered by cached Marorka data and Excel-equivalent calculations.")
+inject_app_css()
+render_app_header()
 
 with st.sidebar:
     username = get_secret("MARORKA_USERNAME")
@@ -1440,20 +1785,8 @@ if pivot_df.empty:
 with st.sidebar:
     st.header("Dashboard Filters")
     vessel_options = sorted(pivot_df["ShipName"].dropna().unique().tolist())
-    loaded_start_date = pivot_df["EndDateTimeGMT"].min().date()
-    loaded_end_date = pivot_df["EndDateTimeGMT"].max().date()
-
-    main_date_range = st.date_input(
-        "KPI/table date range",
-        value=(loaded_start_date, loaded_end_date),
-        min_value=loaded_start_date,
-        max_value=loaded_end_date,
-        key="filter_main_date_range",
-    )
-    if isinstance(main_date_range, tuple) and len(main_date_range) == 2:
-        main_start_date, main_end_date = main_date_range
-    else:
-        main_start_date, main_end_date = loaded_start_date, loaded_end_date
+    loaded_start_date = start_date_input
+    loaded_end_date = end_date_input
 
     selected_vessels = st.multiselect(
         "Vessels",
@@ -1568,8 +1901,6 @@ filtered_pivot = apply_dashboard_filters(
     selected_states,
     numeric_minimums,
     search_text,
-    main_start_date,
-    main_end_date,
 )
 
 boiler_filtered_pivot = apply_dashboard_filters(
@@ -1586,7 +1917,6 @@ boiler_filtered_pivot = apply_dashboard_filters(
 dashboard_tab, report_tab = st.tabs(["Dashboard", "Single Report"])
 
 with dashboard_tab:
-    st.subheader("Dashboard")
     render_operational_dashboard(filtered_pivot, boiler_filtered_pivot, visible_columns)
 
 with report_tab:
