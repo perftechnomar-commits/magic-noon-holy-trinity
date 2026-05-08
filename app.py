@@ -265,21 +265,6 @@ DEFAULT_TABLE_COLUMNS = [
     "Average Power per Reefer [kW]",
 ]
 
-NUMERIC_FILTER_COLUMNS = [
-    ("ME Load >= ", "ME Load [%MCR]"),
-    ("Total Consumption 24h >= ", "Total Consumption 24 Hours [MT]"),
-    ("ME Consumption 24h >= ", "Consumption ME 24 Hours [MT]"),
-    ("DG Load >= ", "Load per Generator [% MCR]"),
-    ("Reefer Power >= ", "Reefer Power [kW]"),
-    ("SOG >= ", "Speed over ground [kn GPS] (kn)"),
-]
-
-BOILER_FILTER_COLUMNS = [
-    ("Boiler Sum >= ", "Boiler Sum"),
-    ("Boiler 24h Consumption >= ", "Consumption Boiler 24 Hours [MT]"),
-]
-
-
 st.set_page_config(page_title=APP_TITLE, layout="wide")
 
 
@@ -527,7 +512,7 @@ def render_app_header() -> None:
         """
         <div class="app-header">
             <div class="app-eyebrow">Magic Noon alla Mantalos</div>
-            <h1>"Magic Noon alla Mantalos"</h1>
+            <h1>Magic Noon Mantalos</h1>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1463,11 +1448,16 @@ def render_data_tables(
     )
 
 
-def filter_by_numeric_min(df: pd.DataFrame, column: str, minimum_value: float | None) -> pd.DataFrame:
-    if minimum_value is None or column not in df.columns:
+def filter_by_numeric_range(
+    df: pd.DataFrame,
+    column: str,
+    value_range: tuple[float, float] | None,
+) -> pd.DataFrame:
+    if value_range is None or column not in df.columns:
         return df
     values = pd.to_numeric(df[column], errors="coerce")
-    return df[values >= minimum_value]
+    minimum_value, maximum_value = value_range
+    return df[(values >= minimum_value) & (values <= maximum_value)]
 
 
 def apply_dashboard_filters(
@@ -1475,7 +1465,7 @@ def apply_dashboard_filters(
     selected_vessels: list[str],
     selected_report_types: list[str],
     selected_states: list[str],
-    numeric_minimums: dict[str, float | None],
+    numeric_ranges: dict[str, tuple[float, float] | None],
     search_text: str,
     start_date_filter: date | None = None,
     end_date_filter: date | None = None,
@@ -1496,8 +1486,8 @@ def apply_dashboard_filters(
     if selected_states:
         filtered = filtered[filtered["StateName"].isin(selected_states)]
 
-    for column, minimum_value in numeric_minimums.items():
-        filtered = filter_by_numeric_min(filtered, column, minimum_value)
+    for column, value_range in numeric_ranges.items():
+        filtered = filter_by_numeric_range(filtered, column, value_range)
 
     if search_text.strip():
         search_value = search_text.strip().casefold()
@@ -1588,13 +1578,93 @@ def render_kpi_card(
     )
 
 
-def parse_optional_float(value: str) -> float | None:
-    if not value.strip():
-        return None
-    try:
-        return float(value.replace(",", "."))
-    except ValueError:
-        return None
+def stable_widget_key(prefix: str, column: str) -> str:
+    digest = sha256(column.encode("utf-8")).hexdigest()[:12]
+    return f"{prefix}_{digest}"
+
+
+def numeric_filter_columns(df: pd.DataFrame) -> list[str]:
+    excluded_columns = {"ReportId", "_QueryNumber"}
+    options = []
+    for column in df.columns:
+        if column in excluded_columns:
+            continue
+        numeric_values = pd.to_numeric(df[column], errors="coerce")
+        if numeric_values.notna().any():
+            options.append(column)
+    return options
+
+
+def slider_step(minimum_value: float, maximum_value: float) -> float:
+    value_range = maximum_value - minimum_value
+    if value_range <= 2:
+        return 0.01
+    if value_range <= 100:
+        return 0.1
+    return 1.0
+
+
+def clamp_range(
+    value_range: tuple[float, float],
+    minimum_value: float,
+    maximum_value: float,
+) -> tuple[float, float]:
+    low_value, high_value = value_range
+    low_value = max(minimum_value, min(float(low_value), maximum_value))
+    high_value = max(minimum_value, min(float(high_value), maximum_value))
+    if low_value > high_value:
+        low_value, high_value = high_value, low_value
+    return low_value, high_value
+
+
+def render_numeric_range_filters(
+    df: pd.DataFrame,
+    *,
+    key_prefix: str,
+    label: str = "Numeric columns",
+) -> dict[str, tuple[float, float] | None]:
+    numeric_options = numeric_filter_columns(df)
+    selected_columns = st.multiselect(
+        label,
+        options=numeric_options,
+        default=[],
+        key=f"{key_prefix}_columns",
+        help="Choose any numeric column loaded from the API or calculated by the dashboard.",
+    )
+
+    ranges: dict[str, tuple[float, float] | None] = {}
+    for column in selected_columns:
+        numeric_values = pd.to_numeric(df[column], errors="coerce").dropna()
+        if numeric_values.empty:
+            continue
+
+        minimum_value = float(numeric_values.min())
+        maximum_value = float(numeric_values.max())
+        if minimum_value == maximum_value:
+            st.caption(f"{column}: only {format_value(minimum_value)} available.")
+            ranges[column] = (minimum_value, maximum_value)
+            continue
+
+        key = stable_widget_key(key_prefix, column)
+        default_range = (minimum_value, maximum_value)
+        if key in st.session_state:
+            st.session_state[key] = clamp_range(
+                st.session_state[key],
+                minimum_value,
+                maximum_value,
+            )
+
+        ranges[column] = st.slider(
+            column,
+            min_value=minimum_value,
+            max_value=maximum_value,
+            value=st.session_state.get(key, default_range),
+            step=slider_step(minimum_value, maximum_value),
+            format="%.3f",
+            key=key,
+        )
+
+    return ranges
 
 
 def mean_metric(df: pd.DataFrame, column: str) -> object:
@@ -1903,18 +1973,11 @@ with st.sidebar:
     )
 
     with st.expander("Numeric filters"):
-        numeric_minimums = {}
-        for label, column in NUMERIC_FILTER_COLUMNS:
-            if column in pivot_df.columns:
-                text_value = st.text_input(
-                    label,
-                    key=f"filter_min_{column}",
-                    help="Blank means no minimum. Example: ME Load >= 0.1 keeps load above 10%.",
-                )
-                parsed_value = parse_optional_float(text_value)
-                if text_value.strip() and parsed_value is None:
-                    st.warning(f"Ignoring invalid number for {label.strip()}.")
-                numeric_minimums[column] = parsed_value
+        numeric_ranges = render_numeric_range_filters(
+            pivot_df,
+            key_prefix="filter_numeric",
+            label="Columns to filter",
+        )
 
     with st.expander("Boiler KPI Filters"):
         st.caption("These filters affect only the Sum of Boiler Sum KPI.")
@@ -1952,18 +2015,11 @@ with st.sidebar:
             help="Leave blank to include all states for the boiler KPI.",
         )
 
-        boiler_numeric_minimums = {}
-        for label, column in BOILER_FILTER_COLUMNS:
-            if column in pivot_df.columns:
-                text_value = st.text_input(
-                    label,
-                    key=f"filter_boiler_min_{column}",
-                    help="Blank means no minimum.",
-                )
-                parsed_value = parse_optional_float(text_value)
-                if text_value.strip() and parsed_value is None:
-                    st.warning(f"Ignoring invalid boiler number for {label.strip()}.")
-                boiler_numeric_minimums[column] = parsed_value
+        boiler_numeric_ranges = render_numeric_range_filters(
+            pivot_df,
+            key_prefix="filter_boiler_numeric",
+            label="Boiler KPI numeric columns",
+        )
 
     with st.expander("Table columns"):
         default_visible_columns = [
@@ -1981,7 +2037,7 @@ filtered_pivot = apply_dashboard_filters(
     selected_vessels,
     selected_report_types,
     selected_states,
-    numeric_minimums,
+    numeric_ranges,
     search_text,
 )
 
@@ -1990,7 +2046,7 @@ boiler_filtered_pivot = apply_dashboard_filters(
     boiler_vessels,
     boiler_report_types,
     boiler_states,
-    boiler_numeric_minimums,
+    boiler_numeric_ranges,
     "",
     boiler_start_date,
     boiler_end_date,
