@@ -19,8 +19,7 @@ BASE_URL = "https://online.marorka.com/Odata/v1/ODataService.svc/ReportData"
 DEFAULT_DAYS_BACK = 30
 DEFAULT_START_DATE = "2026-01-01"
 DEFAULT_API_SHIP_FILTER = ""
-DEFAULT_MAX_PAGES = 5
-ABSOLUTE_MAX_PAGES = 500
+PAGE_SAFETY_LIMIT = 2000
 SAMPLE_ROW_LIMIT = 100
 METRIC_QUERY_CHUNK_SIZE = 8
 
@@ -502,7 +501,7 @@ def make_session() -> requests.Session:
 def fetch_all_data(
     base_url: str,
     parameter_sets: list[dict[str, str]],
-    max_pages: int,
+    page_safety_limit: int,
     auth_signature: str,
     _username: str,
     _password: str,
@@ -537,7 +536,7 @@ def fetch_all_data(
                 row["_QueryNumber"] = query_number
             rows.extend(page_rows)
 
-            if query_page >= max_pages and next_link:
+            if query_page >= page_safety_limit and next_link:
                 stopped_by_page_limit = True
                 break
 
@@ -941,7 +940,12 @@ def make_excel_file(
     return output.getvalue()
 
 
-def render_downloads(pivoted: pd.DataFrame, raw: pd.DataFrame, latest: pd.DataFrame) -> None:
+def render_downloads(
+    pivoted: pd.DataFrame,
+    raw: pd.DataFrame,
+    latest: pd.DataFrame,
+    key_prefix: str,
+) -> None:
     csv_data = pivoted.to_csv(index=False).encode("utf-8")
     excel_data = make_excel_file(pivoted, raw, latest)
 
@@ -952,6 +956,7 @@ def render_downloads(pivoted: pd.DataFrame, raw: pd.DataFrame, latest: pd.DataFr
         file_name="marorka_pivoted_data.csv",
         mime="text/csv",
         use_container_width=True,
+        key=f"{key_prefix}_pivoted_csv",
     )
     excel_column.download_button(
         "Download Excel workbook",
@@ -959,6 +964,7 @@ def render_downloads(pivoted: pd.DataFrame, raw: pd.DataFrame, latest: pd.DataFr
         file_name="marorka_dashboard_export.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
+        key=f"{key_prefix}_excel_workbook",
     )
 
 
@@ -1184,7 +1190,7 @@ def render_data_tables(
     filtered_raw: pd.DataFrame,
     latest_df: pd.DataFrame,
 ) -> None:
-    render_downloads(filtered_pivot, filtered_raw, latest_df)
+    render_downloads(filtered_pivot, filtered_raw, latest_df, key_prefix="export_tab")
 
     st.subheader("Pivoted Data")
     st.dataframe(
@@ -1326,7 +1332,6 @@ def render_dashboard_table(filtered_df: pd.DataFrame, visible_columns: list[str]
 def render_operational_dashboard(
     filtered_df: pd.DataFrame,
     boiler_df: pd.DataFrame,
-    raw_df: pd.DataFrame,
     visible_columns: list[str],
 ) -> None:
     if filtered_df.empty:
@@ -1346,80 +1351,37 @@ def render_operational_dashboard(
     st.subheader("Filtered report table")
     render_dashboard_table(filtered_df, visible_columns)
 
-    filtered_report_ids = set(filtered_df["ReportId"].dropna().tolist())
-    filtered_raw = raw_df[raw_df["ReportId"].isin(filtered_report_ids)].copy()
-    render_downloads(filtered_df, filtered_raw, latest_by_vessel(filtered_df))
-
 
 if not require_dashboard_password():
     st.stop()
 
 st.title(APP_TITLE)
+st.caption("Fleet performance dashboard powered by cached Marorka data and Excel-equivalent calculations.")
 
 with st.sidebar:
     username = get_secret("MARORKA_USERNAME")
     password = get_secret("MARORKA_PASSWORD")
 
     api_base_url = get_secret("MARORKA_BASE_URL", BASE_URL).strip() or BASE_URL
+    query_mode = "Excel-style full pull"
+    api_ship_name = get_secret("MARORKA_SHIP_NAME", DEFAULT_API_SHIP_FILTER).strip()
+    date_format_label = "Date only"
+    selected_values = DEFAULT_VALUES
+    page_safety_limit = get_int_secret("MARORKA_PAGE_SAFETY_LIMIT", PAGE_SAFETY_LIMIT)
 
     st.header("Data Window")
     start_date_input = st.date_input("Start date", value=get_default_start_date())
     end_date_input = st.date_input("End date", value=date.today())
 
-    configured_max_pages = get_int_secret("MARORKA_MAX_PAGES", DEFAULT_MAX_PAGES)
-    max_pages = st.number_input(
-        "Max OData pages per query",
-        min_value=1,
-        max_value=ABSOLUTE_MAX_PAGES,
-        value=min(configured_max_pages, ABSOLUTE_MAX_PAGES),
-        step=1,
-    )
+    refresh_fetch = st.button("Refresh API data", type="primary", use_container_width=True)
 
-    with st.expander("Advanced API options"):
-        query_mode = st.radio(
-            "API request type",
-            options=QUERY_MODES,
-            index=0,
-            help="Use Excel-style full pull for the dashboard. Other modes are diagnostics.",
-        )
-        api_ship_name = st.text_input(
-            "Optional API vessel filter",
-            value=get_secret("MARORKA_SHIP_NAME", DEFAULT_API_SHIP_FILTER),
-            help="Leave blank for all vessels. Use a vessel name only for focused debugging.",
-        ).strip()
-        date_format_label = st.selectbox(
-            "OData date literal",
-            options=list(DATE_LITERAL_FORMATS.keys()),
-            index=0,
-            help="Date only matches the original Power Query style.",
-        )
-
-        if query_mode == "Selected metric pull":
-            selected_values = st.multiselect(
-                "Value descriptions",
-                options=DEFAULT_VALUES,
-                default=DEFAULT_VALUES,
-            )
-        else:
-            selected_values = DEFAULT_VALUES
-
-    run_fetch = st.button("Load dashboard data", type="primary", use_container_width=True)
-    refresh_fetch = st.button("Refresh and rerun", use_container_width=True)
-
-if run_fetch:
-    st.session_state.load_requested = True
 if refresh_fetch:
     fetch_all_data.clear()
     transform_report_data.clear()
-    st.session_state.load_requested = True
     st.rerun()
 
 if end_date_input < start_date_input:
     st.warning("End date must be on or after start date.")
-    st.stop()
-
-if query_mode == "Selected metric pull" and not selected_values:
-    st.warning("Select at least one value description.")
     st.stop()
 
 parameter_sets = build_parameter_sets(
@@ -1431,11 +1393,6 @@ parameter_sets = build_parameter_sets(
     api_ship_name,
 )
 
-if not st.session_state.get("load_requested"):
-    render_query_preview(parameter_sets, int(max_pages), query_mode, api_base_url)
-    st.info("Choose a data window, then click Load dashboard data.")
-    st.stop()
-
 if not username or not password:
     st.error(
         "Marorka API credentials are not configured. Add MARORKA_USERNAME and "
@@ -1446,11 +1403,11 @@ if not username or not password:
 auth_signature = sha256(f"{username}:{password}".encode("utf-8")).hexdigest()
 
 try:
-    with st.spinner("Fetching Marorka OData pages..."):
+    with st.spinner("Loading dashboard data from Marorka..."):
         raw_df, fetch_metadata = fetch_all_data(
             api_base_url,
             parameter_sets,
-            int(max_pages),
+            page_safety_limit,
             auth_signature,
             username,
             password,
@@ -1626,37 +1583,14 @@ boiler_filtered_pivot = apply_dashboard_filters(
     boiler_end_date,
 )
 
-filtered_report_ids = set(filtered_pivot["ReportId"].dropna().tolist())
-filtered_raw = raw_df[raw_df["ReportId"].isin(filtered_report_ids)].copy()
-latest_df = latest_by_vessel(filtered_pivot)
-
-dashboard_tab, report_tab, api_tab, export_tab = st.tabs(
-    ["Dashboard", "Single Report", "API Diagnostics", "Export And Raw Data"]
-)
+dashboard_tab, report_tab = st.tabs(["Dashboard", "Single Report"])
 
 with dashboard_tab:
     st.subheader("Dashboard")
-    render_operational_dashboard(filtered_pivot, boiler_filtered_pivot, raw_df, visible_columns)
+    render_operational_dashboard(filtered_pivot, boiler_filtered_pivot, visible_columns)
 
 with report_tab:
     if filtered_pivot.empty:
         st.warning("No reports match the current filters.")
     else:
         render_report_presentation(filtered_pivot)
-
-with api_tab:
-    render_api_test(
-        raw_df,
-        pivot_df,
-        fetch_metadata,
-        parameter_sets,
-        int(max_pages),
-        query_mode,
-        api_base_url,
-    )
-
-with export_tab:
-    if filtered_pivot.empty:
-        st.warning("No reports match the current filters.")
-    else:
-        render_data_tables(filtered_pivot, filtered_raw, latest_df)
