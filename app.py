@@ -214,7 +214,9 @@ def get_int_secret(name: str, default: int) -> int:
 def require_dashboard_password() -> bool:
     expected_password = get_secret("DASHBOARD_PASSWORD")
     if not expected_password:
-        return True
+        st.title(APP_TITLE)
+        st.error("DASHBOARD_PASSWORD is not configured in Streamlit secrets.")
+        return False
 
     if st.session_state.get("dashboard_authenticated"):
         return True
@@ -790,22 +792,8 @@ st.title(APP_TITLE)
 st.caption("Stage 1: test the API pull. Stage 2: review the report presentation from the same data.")
 
 with st.sidebar:
-    st.header("API Credentials")
-
-    secret_username = get_secret("MARORKA_USERNAME")
-    secret_password = get_secret("MARORKA_PASSWORD")
-    use_secrets = bool(secret_username and secret_password)
-
-    if use_secrets:
-        username = secret_username
-        password = secret_password
-        st.success("Using Marorka credentials from Streamlit secrets.")
-        if st.checkbox("Override credentials"):
-            username = st.text_input("Username", value=secret_username)
-            password = st.text_input("Password", type="password")
-    else:
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
+    username = get_secret("MARORKA_USERNAME")
+    password = get_secret("MARORKA_PASSWORD")
 
     api_base_url = st.text_input(
         "OData endpoint",
@@ -882,7 +870,10 @@ if not st.session_state.get("load_requested"):
     st.stop()
 
 if not username or not password:
-    st.info("Enter Marorka credentials in the sidebar to load data.")
+    st.error(
+        "Marorka API credentials are not configured. Add MARORKA_USERNAME and "
+        "MARORKA_PASSWORD in Streamlit secrets."
+    )
     st.stop()
 
 auth_signature = sha256(f"{username}:{password}".encode("utf-8")).hexdigest()
