@@ -14,8 +14,8 @@ st.markdown(
 )
 
 # Prompt for credentials and start date
-username = st.text_input("Marorka Username")
-password = st.text_input("Marorka Password", type="password")
+username = st.text_input("Username")
+password = st.text_input("Password", type="password")
 start_date_input = st.date_input("Start Date", value=pd.to_datetime("2026-01-01"))
 
 # Convert date input to string for OData filter
