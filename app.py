@@ -1355,7 +1355,6 @@ if not require_dashboard_password():
     st.stop()
 
 st.title(APP_TITLE)
-st.caption("Fleet performance dashboard powered by cached Marorka data and Excel-equivalent calculations.")
 
 with st.sidebar:
     username = get_secret("MARORKA_USERNAME")
