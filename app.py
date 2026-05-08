@@ -17,6 +17,7 @@ from urllib3.util.retry import Retry
 APP_TITLE = "Magic Noon alla Mantalos"
 BASE_URL = "https://online.marorka.com/Odata/v1/ODataService.svc/ReportData"
 DEFAULT_DAYS_BACK = 30
+DEFAULT_START_DATE = "2026-01-01"
 DEFAULT_MAX_PAGES = 5
 ABSOLUTE_MAX_PAGES = 500
 SAMPLE_ROW_LIMIT = 100
@@ -209,6 +210,20 @@ def get_int_secret(name: str, default: int) -> int:
         return int(get_secret(name, str(default)))
     except ValueError:
         return default
+
+
+def get_default_start_date() -> date:
+    configured_start_date = get_secret("MARORKA_START_DATE")
+    if configured_start_date:
+        parsed = pd.to_datetime(configured_start_date, errors="coerce")
+        if pd.notna(parsed):
+            return parsed.date()
+
+    configured_days_back = get_int_secret("MARORKA_DAYS_BACK", DEFAULT_DAYS_BACK)
+    if configured_days_back > 0:
+        return date.today() - timedelta(days=configured_days_back)
+
+    return pd.to_datetime(DEFAULT_START_DATE).date()
 
 
 def require_dashboard_password() -> bool:
@@ -795,11 +810,7 @@ with st.sidebar:
     username = get_secret("MARORKA_USERNAME")
     password = get_secret("MARORKA_PASSWORD")
 
-    api_base_url = st.text_input(
-        "OData endpoint",
-        value=get_secret("MARORKA_BASE_URL", BASE_URL),
-        help="Change this only when testing endpoint path/casing.",
-    ).strip()
+    api_base_url = get_secret("MARORKA_BASE_URL", BASE_URL).strip() or BASE_URL
 
     st.header("API Test Controls")
     query_mode = st.radio(
@@ -812,9 +823,7 @@ with st.sidebar:
         ),
     )
 
-    configured_days_back = get_int_secret("MARORKA_DAYS_BACK", DEFAULT_DAYS_BACK)
-    default_start_date = date.today() - timedelta(days=configured_days_back)
-    start_date_input = st.date_input("Start date", value=default_start_date)
+    start_date_input = st.date_input("Start date", value=get_default_start_date())
 
     date_format_label = st.selectbox(
         "OData date literal",
@@ -851,10 +860,6 @@ if refresh_fetch:
 
 if query_mode == "Selected metric pull" and not selected_values:
     st.warning("Select at least one value description.")
-    st.stop()
-
-if not api_base_url:
-    st.warning("Enter an OData endpoint.")
     st.stop()
 
 parameter_sets = build_parameter_sets(
@@ -959,8 +964,4 @@ with report_tab:
     else:
         render_report_presentation(filtered_pivot)
 
-with tables_tab:
-    if filtered_pivot.empty:
-        st.warning("No reports match the current report filters.")
-    else:
-        render_data_tables(filtered_pivot, filtered_raw, latest_df)
+with 
