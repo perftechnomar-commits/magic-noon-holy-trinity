@@ -17,7 +17,7 @@ st.markdown("Choose a start date to fetch all-vessel data. Credentials are read 
 # to allow the user to select the reporting window.
 username = st.secrets.get("MARORKA_USERNAME")
 password = st.secrets.get("MARORKA_PASSWORD")
-start_date_input = st.date_input("Start Date", value=pd.to_datetime("2025-01-01"))
+start_date_input = st.date_input("Start Date", value=pd.to_datetime("2026-01-01"))
 
 # Convert date input to string for OData filter
 start_date_str = start_date_input.strftime("%Y-%m-%d")
