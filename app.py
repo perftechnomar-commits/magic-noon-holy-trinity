@@ -18,12 +18,14 @@ APP_TITLE = "Magic Noon alla Mantalos"
 BASE_URL = "https://online.marorka.com/Odata/v1/ODataService.svc/ReportData"
 DEFAULT_DAYS_BACK = 30
 DEFAULT_START_DATE = "2026-01-01"
+DEFAULT_API_SHIP_FILTER = ""
 DEFAULT_MAX_PAGES = 5
 ABSOLUTE_MAX_PAGES = 500
 SAMPLE_ROW_LIMIT = 100
 METRIC_QUERY_CHUNK_SIZE = 8
 
 QUERY_MODES = [
+    "Excel-style full pull",
     "Connection test",
     "Date sample",
     "Selected metric pull",
@@ -111,12 +113,18 @@ DEFAULT_VALUES = [
 
 KEY_METRICS = [
     ("Lap Time", "LapTime"),
+    ("Average Draft", "Average Draft [m]"),
+    ("Calculated Slip", "Calculated Slip"),
+    ("Corrected Speed", "Corrected Speed for 7% Slip"),
     ("Engine Distance", "Engine Distance [nm]"),
     ("Distance Over Ground", "Distance Over Ground [nm]"),
     ("Water Speed", "Water speed [kn Log] (kn)"),
     ("SOG", "Speed over ground [kn GPS] (kn)"),
     ("ME Load", "ME Load [%MCR]"),
-    ("Torque Power", "Power from Torque Meter [kW]"),
+    ("ME 24h Consumption", "Consumption ME 24 Hours [MT]"),
+    ("Total 24h Consumption", "Total Consumption 24 Hours [MT]"),
+    ("SFOC", "SFOC [gr/Kwh]"),
+    ("Torque Power", "Total Shaft Power [kW] (kW)"),
     ("Total DG Power", "Total DG Power [kW] (kW)"),
     ("Reefer Power", "Reefer Power [kW]"),
     ("Average Power / Reefer", "Average Power per Reefer [kW]"),
@@ -143,6 +151,12 @@ REPORT_SECTIONS = {
     "Electrical And Reefers": [
         "Total DG Power [kW] (kW)",
         "Shaft Generator Power [kW]",
+        "Load per Generator Calculated",
+        "Load per Generator [% MCR]",
+        "20ft Reefer Units",
+        "40ft Reefer Units",
+        "Reefers Onboard 20ft Equivalent",
+        "Estimated Reefer Load",
         "Reefer Power [kW]",
         "Reefer Energy [kWh]",
         "Average Power per Reefer [kW]",
@@ -161,6 +175,13 @@ REPORT_SECTIONS = {
         "DG4 Load [% MCR]",
     ],
     "Fuel Consumption": [
+        "Consumption ME 24 Hours [MT]",
+        "Consumption DGs 24 Hours [MT]",
+        "Boiler Sum",
+        "Consumption Boiler 24 Hours [MT]",
+        "Total Consumption 24 Hours [MT]",
+        "HFO Consumption Equivalent [MT]",
+        "SFOC [gr/Kwh]",
         "Main Engine - HSHFO",
         "Main Engine - HSLFO",
         "Main Engine - MGO",
@@ -183,6 +204,23 @@ REPORT_SECTIONS = {
         "Boiler - VLSHFO",
         "Boiler - VLSLFO",
     ],
+    "Performance Calculations": [
+        "Average Draft [m]",
+        "Calculated Slip",
+        "Corrected Speed for 7% Slip",
+        "Engine Miles Calculated [RPM]",
+        "Engine Miles Calculated [Rev]",
+        "Current Speed Calculated [kn]",
+        "For Corrected Speed CP Consumption is",
+        "Difference from Actual",
+        "Difference Percentage",
+        "For Corrected Speed with + 0.5 kn for on about CP Consumption is",
+        "Difference from Actual2",
+        "Difference Percentage2",
+        "For Corrected Speed with + 0.5 kn + 5% for both on abouts CP Consumption is",
+        "Difference from Actual3",
+        "Difference Percentage3",
+    ],
     "Fresh Water And Waste": [
         "Bilge Water Produced [cbm]",
         "Bilge Water Disposed Through OWS [cbm]",
@@ -193,6 +231,54 @@ REPORT_SECTIONS = {
         "Air Cooler Air Press Drop [mmWC]",
     ],
 }
+
+DEFAULT_TABLE_COLUMNS = [
+    "ShipName",
+    "ReportType",
+    "StartDateTimeGMT",
+    "EndDateTimeGMT",
+    "LapTime",
+    "StateName",
+    "Average Draft [m]",
+    "Calculated Slip",
+    "Shaft 1 RPM (rpm)",
+    "Corrected Speed for 7% Slip",
+    "Engine Distance [nm]",
+    "Distance Over Ground [nm]",
+    "Speed over ground [kn GPS] (kn)",
+    "Water speed [kn Log] (kn)",
+    "Current Speed Calculated [kn]",
+    "ME Load [%MCR]",
+    "Consumption ME 24 Hours [MT]",
+    "Consumption DGs 24 Hours [MT]",
+    "Boiler Sum",
+    "Consumption Boiler 24 Hours [MT]",
+    "Total Consumption 24 Hours [MT]",
+    "HFO Consumption Equivalent [MT]",
+    "Total DG Power [kW] (kW)",
+    "Load per Generator [% MCR]",
+    "Total Shaft Power [kW] (kW)",
+    "SFOC [gr/Kwh]",
+    "Total Number Reefer Units (20 and 40ft)",
+    "Reefers Onboard 20ft Equivalent",
+    "Estimated Reefer Load",
+    "Reefer Power [kW]",
+    "Average Power per Reefer [kW]",
+]
+
+NUMERIC_FILTER_COLUMNS = [
+    ("ME Load >= ", "ME Load [%MCR]"),
+    ("Total Consumption 24h >= ", "Total Consumption 24 Hours [MT]"),
+    ("ME Consumption 24h >= ", "Consumption ME 24 Hours [MT]"),
+    ("DG Load >= ", "Load per Generator [% MCR]"),
+    ("Reefer Power >= ", "Reefer Power [kW]"),
+    ("SOG >= ", "Speed over ground [kn GPS] (kn)"),
+]
+
+BOILER_FILTER_COLUMNS = [
+    ("Boiler Sum >= ", "Boiler Sum"),
+    ("Boiler 24h Consumption >= ", "Consumption Boiler 24 Hours [MT]"),
+]
 
 
 st.set_page_config(page_title=APP_TITLE, layout="wide")
@@ -269,19 +355,28 @@ def chunks(values: list[str], size: int) -> list[list[str]]:
 
 def build_query_params(
     start_date_value: date,
+    end_date_value: date,
     values: list[str] | None,
     *,
     include_date_filter: bool,
     include_value_filter: bool,
     date_literal_format: str,
+    ship_name: str = "",
+    date_operator: str = "ge",
+    order_by_start_desc: bool = False,
     top_limit: int | None = None,
 ) -> dict[str, str]:
     start_datetime = start_date_value.strftime(date_literal_format)
+    end_exclusive_datetime = (end_date_value + timedelta(days=1)).strftime(date_literal_format)
     report_type_filter = build_report_type_filter(REPORT_TYPES_TO_EXCLUDE)
     filters = ["ValueDescription ne null"]
 
+    if ship_name.strip():
+        filters.insert(0, f"ShipName eq '{escape_odata_text(ship_name.strip())}'")
+
     if include_date_filter:
-        filters.insert(0, f"StartDateTimeGMT ge DateTime'{start_datetime}'")
+        filters.append(f"StartDateTimeGMT {date_operator} DateTime'{start_datetime}'")
+        filters.append(f"StartDateTimeGMT lt DateTime'{end_exclusive_datetime}'")
 
     if report_type_filter:
         filters.append(report_type_filter.removeprefix("and "))
@@ -298,23 +393,30 @@ def build_query_params(
     if top_limit:
         params["$top"] = str(top_limit)
 
+    if order_by_start_desc:
+        params["$orderby"] = "StartDateTimeGMT desc"
+
     return params
 
 
 def build_parameter_sets(
     query_mode: str,
     start_date_value: date,
+    end_date_value: date,
     values: list[str],
     date_literal_format: str,
+    ship_name: str,
 ) -> list[dict[str, str]]:
     if query_mode == "Connection test":
         return [
             build_query_params(
                 start_date_value,
+                end_date_value,
                 None,
                 include_date_filter=False,
                 include_value_filter=False,
                 date_literal_format=date_literal_format,
+                ship_name=ship_name,
                 top_limit=10,
             )
         ]
@@ -323,21 +425,42 @@ def build_parameter_sets(
         return [
             build_query_params(
                 start_date_value,
+                end_date_value,
                 None,
                 include_date_filter=True,
                 include_value_filter=False,
                 date_literal_format=date_literal_format,
+                ship_name=ship_name,
+                order_by_start_desc=True,
                 top_limit=SAMPLE_ROW_LIMIT,
+            )
+        ]
+
+    if query_mode == "Excel-style full pull":
+        return [
+            build_query_params(
+                start_date_value,
+                end_date_value,
+                None,
+                include_date_filter=True,
+                include_value_filter=False,
+                date_literal_format=date_literal_format,
+                ship_name=ship_name,
+                date_operator="gt",
+                order_by_start_desc=True,
             )
         ]
 
     return [
         build_query_params(
             start_date_value,
+            end_date_value,
             value_chunk,
             include_date_filter=True,
             include_value_filter=True,
             date_literal_format=date_literal_format,
+            ship_name=ship_name,
+            order_by_start_desc=True,
         )
         for value_chunk in chunks(values, METRIC_QUERY_CHUNK_SIZE)
     ]
@@ -476,6 +599,284 @@ def pivot_report_data(df: pd.DataFrame) -> pd.DataFrame:
     return pivoted
 
 
+def numeric_column(df: pd.DataFrame, column: str) -> pd.Series:
+    if column not in df.columns:
+        return pd.Series(pd.NA, index=df.index, dtype="Float64")
+    return pd.to_numeric(df[column], errors="coerce")
+
+
+def first_numeric_column(df: pd.DataFrame, columns: list[str]) -> pd.Series:
+    result = pd.Series(pd.NA, index=df.index, dtype="Float64")
+    for column in columns:
+        if column in df.columns:
+            result = result.fillna(numeric_column(df, column))
+    return result
+
+
+def sum_numeric_columns(df: pd.DataFrame, columns: list[str]) -> pd.Series:
+    available_columns = [column for column in columns if column in df.columns]
+    if not available_columns:
+        return pd.Series(pd.NA, index=df.index, dtype="Float64")
+    numeric_values = df[available_columns].apply(pd.to_numeric, errors="coerce")
+    return numeric_values.sum(axis=1, min_count=1)
+
+
+def safe_divide(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
+    denominator = denominator.replace(0, pd.NA)
+    return numerator / denominator
+
+
+def round_series(series: pd.Series, digits: int = 3) -> pd.Series:
+    return pd.to_numeric(series, errors="coerce").round(digits)
+
+
+def add_power_query_calculations(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    result = df.copy()
+    lap_time = numeric_column(result, "LapTime")
+    draft_forward = numeric_column(result, "Draft Forward [m] (m)")
+    draft_aft = numeric_column(result, "Draft Aft [m] (m)")
+    engine_distance = numeric_column(result, "Engine Distance [nm]")
+    distance_over_ground = numeric_column(result, "Distance Over Ground [nm]")
+    shaft_rpm = numeric_column(result, "Shaft 1 RPM (rpm)")
+    me_revolutions = numeric_column(result, "ME Rev Since Last Report")
+
+    result["Average Draft [m]"] = round_series(
+        pd.concat([draft_forward, draft_aft], axis=1).mean(axis=1, skipna=True)
+    )
+    result["Calculated Slip"] = round_series(
+        1 - safe_divide(distance_over_ground, engine_distance)
+    )
+    result["Corrected Speed for 7% Slip"] = round_series(
+        shaft_rpm * 0.030123 * 8.2220
+    )
+
+    me_fuel_columns = [
+        "Main Engine - HSHFO",
+        "Main Engine - HSLFO",
+        "Main Engine - MGO",
+        "Main Engine - ULSHFO",
+        "Main Engine - ULSLFO",
+        "Main Engine - VLSHFO",
+        "Main Engine - VLSLFO",
+    ]
+    dg_fuel_columns = [
+        "Diesel Generators - HSHFO",
+        "Diesel Generators - HSLFO",
+        "Diesel Generators - MGO",
+        "Diesel Generators - ULSHFO",
+        "Diesel Generators - ULSLFO",
+        "Diesel Generators - VLSHFO",
+        "Diesel Generators - VLSLFO",
+    ]
+    boiler_fuel_columns = [
+        "Boiler - HSHFO",
+        "Boiler - HSLFO",
+        "Boiler - MGO",
+        "Boiler - ULSHFO",
+        "Boiler - ULSLFO",
+        "Boiler - VLSHFO",
+        "Boiler - VLSLFO",
+    ]
+
+    result["Consumption ME 24 Hours [MT]"] = round_series(
+        safe_divide(sum_numeric_columns(result, me_fuel_columns) * 24, lap_time)
+    )
+    result["Consumption DGs 24 Hours [MT]"] = round_series(
+        safe_divide(sum_numeric_columns(result, dg_fuel_columns) * 24, lap_time)
+    )
+    result["Consumption Boiler 24 Hours [MT]"] = round_series(
+        safe_divide(sum_numeric_columns(result, boiler_fuel_columns) * 24, lap_time)
+    )
+    result["Boiler Sum"] = round_series(sum_numeric_columns(result, boiler_fuel_columns))
+    result["Total Consumption 24 Hours [MT]"] = round_series(
+        sum_numeric_columns(
+            result,
+            [
+                "Consumption ME 24 Hours [MT]",
+                "Consumption DGs 24 Hours [MT]",
+                "Consumption Boiler 24 Hours [MT]",
+            ],
+        )
+    )
+
+    shaft_power = first_numeric_column(
+        result,
+        ["Total Shaft Power [kW] (kW)", "Power from Torque Meter [kW]"],
+    )
+    result["SFOC [gr/Kwh]"] = round_series(
+        safe_divide(result["Consumption ME 24 Hours [MT]"], shaft_power) / 0.000024
+    ).fillna(0)
+
+    hfo_columns = [
+        "Main Engine - HSHFO",
+        "Diesel Generators - HSHFO",
+        "Boiler - HSHFO",
+        "Main Engine - VLSHFO",
+        "Diesel Generators - VLSHFO",
+        "Boiler - VLSHFO",
+        "Main Engine - ULSHFO",
+        "Diesel Generators - ULSHFO",
+        "Boiler - ULSHFO",
+    ]
+    lfo_columns = [
+        "Main Engine - HSLFO",
+        "Diesel Generators - HSLFO",
+        "Boiler - HSLFO",
+        "Main Engine - VLSLFO",
+        "Diesel Generators - VLSLFO",
+        "Boiler - VLSLFO",
+        "Main Engine - ULSLFO",
+        "Diesel Generators - ULSLFO",
+        "Boiler - ULSLFO",
+    ]
+    mgo_columns = [
+        "Main Engine - MGO",
+        "Diesel Generators - MGO",
+        "Boiler - MGO",
+    ]
+    total_hfo = sum_numeric_columns(result, hfo_columns)
+    total_lfo = safe_divide(sum_numeric_columns(result, lfo_columns), pd.Series(0.9481, index=result.index))
+    total_mgo = safe_divide(sum_numeric_columns(result, mgo_columns), pd.Series(0.9415, index=result.index))
+    result["HFO Consumption Equivalent [MT]"] = round_series(
+        pd.concat([total_hfo, total_lfo, total_mgo], axis=1).sum(axis=1, min_count=1)
+    )
+
+    result["Engine Miles Calculated [RPM]"] = (
+        round_series(shaft_rpm * 0.032397 * lap_time * 8.2220).fillna(0)
+    )
+    result["Engine Miles Calculated [Rev]"] = round_series(
+        safe_divide(me_revolutions, pd.Series(1852, index=result.index)) * 8.2220
+    )
+
+    speed_through_water = numeric_column(result, "Water speed [kn Log] (kn)")
+    speed_over_ground = numeric_column(result, "Speed over ground [kn GPS] (kn)")
+    current_speed = speed_through_water - speed_over_ground
+    result["Current Speed Calculated [kn]"] = round_series(
+        current_speed.where(result.get("StateName", "") == "Sea Passage")
+    ).fillna(0)
+
+    generator_hours = sum_numeric_columns(
+        result,
+        [
+            "DG1 Running Time [h] (h)",
+            "DG2 Running Time [h] (h)",
+            "DG3 Running Time [h] (h)",
+            "DG4 Running Time [h] (h)",
+            "DG1 Running Hours [hh:mm]",
+            "DG2 Running Hours [hh:mm]",
+            "DG3 Running Hours [hh:mm]",
+            "DG4 Running Hours [hh:mm]",
+            "Shaft Generator Running Hours [hh:mm]",
+        ],
+    )
+    total_dg_power = numeric_column(result, "Total DG Power [kW] (kW)")
+    result["Load per Generator Calculated"] = round_series(
+        safe_divide(total_dg_power, generator_hours) * lap_time
+    )
+    result["Load per Generator [% MCR]"] = round_series(
+        safe_divide(result["Load per Generator Calculated"], pd.Series(2900, index=result.index))
+    )
+
+    reefer_20 = numeric_column(result, "20ft Reefer Units")
+    reefer_40 = numeric_column(result, "40ft Reefer Units")
+    result["Reefers Onboard 20ft Equivalent"] = round_series(
+        (reefer_20 + reefer_40) * 1.66
+    ).fillna(0)
+    result["Estimated Reefer Load"] = round_series(
+        result["Reefers Onboard 20ft Equivalent"] * 3
+    )
+
+    corrected_speed = numeric_column(result, "Corrected Speed for 7% Slip")
+    cp_consumption = (
+        corrected_speed.pow(3) * -0.002695939
+        + corrected_speed.pow(2) * 0.38073932
+        + corrected_speed * -1.884501436
+    )
+    result["For Corrected Speed CP Consumption is"] = round_series(cp_consumption).fillna(0)
+    result["Difference from Actual"] = (
+        result["For Corrected Speed CP Consumption is"]
+        - result["Consumption ME 24 Hours [MT]"]
+    )
+    result["Difference Percentage"] = (
+        1
+        - safe_divide(
+            result["For Corrected Speed CP Consumption is"],
+            result["Consumption ME 24 Hours [MT]"],
+        )
+    ).where(result["For Corrected Speed CP Consumption is"] > 0)
+
+    corrected_speed_plus = corrected_speed + 0.5
+    cp_consumption_plus = (
+        corrected_speed_plus.pow(3) * -0.002695939
+        + corrected_speed_plus.pow(2) * 0.38073932
+        + corrected_speed_plus * -1.884501436
+    )
+    result["For Corrected Speed with + 0.5 kn for on about CP Consumption is"] = (
+        round_series(cp_consumption_plus).fillna(0)
+    )
+    result["Difference from Actual2"] = (
+        result["For Corrected Speed with + 0.5 kn for on about CP Consumption is"]
+        - result["Consumption ME 24 Hours [MT]"]
+    )
+    result["Difference Percentage2"] = (
+        1
+        - safe_divide(
+            result["For Corrected Speed with + 0.5 kn for on about CP Consumption is"],
+            result["Consumption ME 24 Hours [MT]"],
+        )
+    ).where(result["For Corrected Speed with + 0.5 kn for on about CP Consumption is"] > 0)
+
+    result["For Corrected Speed with + 0.5 kn + 5% for both on abouts CP Consumption is"] = (
+        round_series(
+            result["For Corrected Speed with + 0.5 kn for on about CP Consumption is"] * 1.05
+        )
+    )
+    result["Difference from Actual3"] = round_series(
+        result["For Corrected Speed with + 0.5 kn + 5% for both on abouts CP Consumption is"]
+        - result["Consumption ME 24 Hours [MT]"]
+    )
+    result["Difference Percentage3"] = (
+        1
+        - safe_divide(
+            result["For Corrected Speed with + 0.5 kn + 5% for both on abouts CP Consumption is"],
+            result["Total Consumption 24 Hours [MT]"],
+        )
+    ).where(
+        result["For Corrected Speed with + 0.5 kn + 5% for both on abouts CP Consumption is"] > 0
+    )
+
+    percentage_columns = [
+        "Slip Average [%]",
+        "ME Load [%MCR]",
+        "DG1 Load [% MCR]",
+        "DG2 Load [% MCR]",
+        "DG3 Load [% MCR]",
+        "DG4 Load [% MCR]",
+        "Bending Moments [%]",
+        "Shearing Forces [%]",
+        "Torsional Moments [%]",
+    ]
+    for column in percentage_columns:
+        if column in result.columns:
+            result[column] = numeric_column(result, column) / 100
+
+    for column in ["Difference Percentage", "Difference Percentage2", "Difference Percentage3"]:
+        result[column] = round_series(result[column]).replace(0, pd.NA)
+
+    return result
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def transform_report_data(raw_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    prepared_raw = prepare_raw_data(raw_df)
+    pivoted = pivot_report_data(prepared_raw)
+    calculated = add_power_query_calculations(pivoted)
+    return prepared_raw, calculated
+
+
 def format_value(value: object) -> str:
     if pd.isna(value):
         return "-"
@@ -569,403 +970,4 @@ def render_query_preview(
 ) -> None:
     st.subheader("API Test Setup")
     st.write("Use this first to confirm credentials, date range, pagination, and returned fields.")
-    first_url = prepared_url(base_url, parameter_sets[0])
-    st.code(first_url, language="text")
-    if len(first_url) > 1800:
-        st.warning(
-            f"The first request URL is {len(first_url):,} characters. "
-            "Long OData URLs can be rejected by IIS as HTTP 404. "
-            "Use Connection test or Date sample first, or reduce selected metrics."
-        )
-    st.json(
-        {
-            "query_mode": query_mode,
-            "query_count": len(parameter_sets),
-            "max_pages": max_pages,
-            "first_request_url_length": len(first_url),
-            "first_parameters": parameter_sets[0],
-        }
-    )
-
-
-def render_api_test(
-    raw_df: pd.DataFrame,
-    pivot_df: pd.DataFrame,
-    metadata: dict[str, int | float | bool],
-    parameter_sets: list[dict[str, str]],
-    max_pages: int,
-    query_mode: str,
-    base_url: str,
-) -> None:
-    st.subheader("Fetch Result")
-    if metadata.get("stopped_by_page_limit"):
-        st.warning(
-            "The fetch stopped at the selected max-page limit. Increase max pages "
-            "when you are ready to test the full API pull."
-        )
-
-    metric_columns = st.columns(6)
-    metric_columns[0].metric("Raw rows", f"{len(raw_df):,}")
-    metric_columns[1].metric("Reports", f"{pivot_df['ReportId'].nunique():,}")
-    metric_columns[2].metric("Vessels", f"{pivot_df['ShipName'].nunique():,}")
-    metric_columns[3].metric("API queries/pages", f"{metadata['queries']}/{metadata['pages']}")
-    metric_columns[4].metric("Downloaded MB", metadata["downloaded_mb"])
-    metric_columns[5].metric("Elapsed sec", metadata["elapsed_seconds"])
-
-    if "EndDateTimeGMT" in pivot_df.columns:
-        min_date = pivot_df["EndDateTimeGMT"].min()
-        max_date = pivot_df["EndDateTimeGMT"].max()
-        if pd.notna(min_date) and pd.notna(max_date):
-            st.caption(
-                f"Loaded report window: {min_date:%Y-%m-%d %H:%M} "
-                f"to {max_date:%Y-%m-%d %H:%M} GMT"
-            )
-
-    with st.expander("Exact API request settings", expanded=False):
-        render_query_preview(parameter_sets, max_pages, query_mode, base_url)
-
-    left_column, right_column = st.columns(2)
-    with left_column:
-        st.subheader("Rows By Report Type")
-        st.dataframe(
-            raw_df["ReportType"].value_counts(dropna=False).rename_axis("ReportType").reset_index(name="Rows"),
-            use_container_width=True,
-            hide_index=True,
-        )
-
-    with right_column:
-        st.subheader("Rows By Vessel")
-        st.dataframe(
-            raw_df["ShipName"].value_counts(dropna=False).rename_axis("ShipName").reset_index(name="Rows"),
-            use_container_width=True,
-            hide_index=True,
-        )
-
-    st.subheader("Value Descriptions Returned")
-    value_counts = (
-        raw_df["ValueDescription"]
-        .value_counts(dropna=False)
-        .rename_axis("ValueDescription")
-        .reset_index(name="Rows")
-    )
-    st.dataframe(value_counts, use_container_width=True, hide_index=True)
-
-    st.subheader("Latest Report By Vessel")
-    latest_columns = [
-        "ShipName",
-        "ReportType",
-        "StartDateTimeGMT",
-        "EndDateTimeGMT",
-        "LapTime",
-        "StateName",
-        "ReportId",
-    ]
-    st.dataframe(
-        latest_by_vessel(pivot_df)[latest_columns],
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    st.subheader("Raw Sample")
-    st.dataframe(raw_df.head(100), use_container_width=True, hide_index=True)
-
-
-def report_selector(pivot_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series, pd.Series | None]:
-    vessel_options = sorted(pivot_df["ShipName"].dropna().unique().tolist())
-    selected_vessel = st.selectbox("Report vessel", vessel_options)
-    vessel_df = pivot_df[pivot_df["ShipName"] == selected_vessel].sort_values(
-        "EndDateTimeGMT", ascending=False
-    )
-
-    report_options = []
-    for _, row in vessel_df.iterrows():
-        report_options.append(
-            {
-                "ReportId": row["ReportId"],
-                "Label": (
-                    f"{format_datetime(row['EndDateTimeGMT'])} GMT"
-                    f" | {row.get('ReportType', '-')}"
-                    f" | {row.get('StateName', '-')}"
-                ),
-            }
-        )
-
-    selected_label = st.selectbox(
-        "Report date/time",
-        [option["Label"] for option in report_options],
-    )
-    selected_report_id = next(
-        option["ReportId"] for option in report_options if option["Label"] == selected_label
-    )
-
-    selected_index = vessel_df.index[vessel_df["ReportId"] == selected_report_id][0]
-    selected_row = vessel_df.loc[selected_index]
-
-    chronological = vessel_df.sort_values("EndDateTimeGMT")
-    previous_rows = chronological[chronological["EndDateTimeGMT"] < selected_row["EndDateTimeGMT"]]
-    previous_row = previous_rows.iloc[-1] if not previous_rows.empty else None
-    return vessel_df, selected_row, previous_row
-
-
-def render_metric_cards(row: pd.Series, previous_row: pd.Series | None) -> None:
-    available_metrics = [(label, column) for label, column in KEY_METRICS if column in row.index]
-    for chunk_start in range(0, len(available_metrics), 5):
-        columns = st.columns(min(5, len(available_metrics) - chunk_start))
-        for metric_column, (label, source_column) in zip(
-            columns, available_metrics[chunk_start : chunk_start + 5]
-        ):
-            delta = None
-            if previous_row is not None and source_column in previous_row.index:
-                delta = numeric_delta(row[source_column], previous_row[source_column])
-            metric_column.metric(label, format_value(row[source_column]), delta=delta)
-
-
-def section_dataframe(row: pd.Series, section_columns: list[str]) -> pd.DataFrame:
-    records = []
-    for column in section_columns:
-        if column in row.index and pd.notna(row[column]):
-            records.append({"Parameter": column, "Value": format_value(row[column])})
-    return pd.DataFrame(records)
-
-
-def render_report_presentation(pivot_df: pd.DataFrame) -> None:
-    st.subheader("Report Presentation")
-    vessel_df, selected_row, previous_row = report_selector(pivot_df)
-
-    header_columns = st.columns([2, 1, 1, 1])
-    header_columns[0].markdown(f"### {selected_row.get('ShipName', '-')}")
-    header_columns[1].metric("Report Type", selected_row.get("ReportType", "-"))
-    header_columns[2].metric("State", selected_row.get("StateName", "-"))
-    header_columns[3].metric("Report ID", selected_row.get("ReportId", "-"))
-
-    time_columns = st.columns(3)
-    time_columns[0].metric("Start GMT", format_datetime(selected_row.get("StartDateTimeGMT")))
-    time_columns[1].metric("End GMT", format_datetime(selected_row.get("EndDateTimeGMT")))
-    time_columns[2].metric("Lap Time", format_value(selected_row.get("LapTime")))
-
-    st.divider()
-    render_metric_cards(selected_row, previous_row)
-    st.caption("Deltas compare against the previous report for the same vessel when numeric values are available.")
-
-    st.divider()
-    section_names = list(REPORT_SECTIONS.keys())
-    for chunk_start in range(0, len(section_names), 2):
-        columns = st.columns(2)
-        for section_column, section_name in zip(columns, section_names[chunk_start : chunk_start + 2]):
-            with section_column:
-                section = section_dataframe(selected_row, REPORT_SECTIONS[section_name])
-                st.subheader(section_name)
-                if section.empty:
-                    st.info("No returned values for this section.")
-                else:
-                    st.dataframe(section, use_container_width=True, hide_index=True)
-
-    trend_columns = [
-        "Engine Distance [nm]",
-        "Distance Over Ground [nm]",
-        "Power from Torque Meter [kW]",
-        "Total DG Power [kW] (kW)",
-        "Reefer Power [kW]",
-    ]
-    available_trends = [column for column in trend_columns if column in vessel_df.columns]
-    if available_trends:
-        st.subheader("Recent Numeric Trend")
-        trend_df = vessel_df.sort_values("EndDateTimeGMT")[["EndDateTimeGMT"] + available_trends].copy()
-        for column in available_trends:
-            trend_df[column] = pd.to_numeric(trend_df[column], errors="coerce")
-        trend_df = trend_df.set_index("EndDateTimeGMT").dropna(how="all")
-        if not trend_df.empty:
-            st.line_chart(trend_df)
-
-
-def render_data_tables(
-    filtered_pivot: pd.DataFrame,
-    filtered_raw: pd.DataFrame,
-    latest_df: pd.DataFrame,
-) -> None:
-    render_downloads(filtered_pivot, filtered_raw, latest_df)
-
-    st.subheader("Pivoted Data")
-    st.dataframe(
-        filtered_pivot.sort_values("EndDateTimeGMT", ascending=False),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    st.subheader("Raw Data")
-    st.dataframe(
-        filtered_raw.sort_values(["ShipName", "EndDateTimeGMT"], ascending=[True, False]),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-
-if not require_dashboard_password():
-    st.stop()
-
-st.title(APP_TITLE)
-st.caption("Stage 1: test the API pull. Stage 2: review the report presentation from the same data.")
-
-with st.sidebar:
-    username = get_secret("MARORKA_USERNAME")
-    password = get_secret("MARORKA_PASSWORD")
-
-    api_base_url = get_secret("MARORKA_BASE_URL", BASE_URL).strip() or BASE_URL
-
-    st.header("API Test Controls")
-    query_mode = st.radio(
-        "API request type",
-        options=QUERY_MODES,
-        index=0,
-        help=(
-            "Start with Connection test. If that works, try Date sample. "
-            "Use Selected metric pull for the dashboard data."
-        ),
-    )
-
-    start_date_input = st.date_input("Start date", value=get_default_start_date())
-
-    date_format_label = st.selectbox(
-        "OData date literal",
-        options=list(DATE_LITERAL_FORMATS.keys()),
-        index=0,
-        help="Use Date only first because it matches the original Power Query style.",
-    )
-
-    configured_max_pages = get_int_secret("MARORKA_MAX_PAGES", DEFAULT_MAX_PAGES)
-    max_pages = st.number_input(
-        "Max OData pages per query",
-        min_value=1,
-        max_value=ABSOLUTE_MAX_PAGES,
-        value=min(configured_max_pages, ABSOLUTE_MAX_PAGES),
-        step=1,
-    )
-
-    with st.expander("Metric filter"):
-        selected_values = st.multiselect(
-            "Value descriptions",
-            options=DEFAULT_VALUES,
-            default=DEFAULT_VALUES,
-        )
-
-    run_fetch = st.button("Run API test", type="primary", use_container_width=True)
-    refresh_fetch = st.button("Refresh and rerun", use_container_width=True)
-
-if run_fetch:
-    st.session_state.load_requested = True
-if refresh_fetch:
-    fetch_all_data.clear()
-    st.session_state.load_requested = True
-    st.rerun()
-
-if query_mode == "Selected metric pull" and not selected_values:
-    st.warning("Select at least one value description.")
-    st.stop()
-
-parameter_sets = build_parameter_sets(
-    query_mode,
-    start_date_input,
-    selected_values,
-    DATE_LITERAL_FORMATS[date_format_label],
-)
-
-if not st.session_state.get("load_requested"):
-    render_query_preview(parameter_sets, int(max_pages), query_mode, api_base_url)
-    st.info("Click Run API test in the sidebar when you are ready to call Marorka.")
-    st.stop()
-
-if not username or not password:
-    st.error(
-        "Marorka API credentials are not configured. Add MARORKA_USERNAME and "
-        "MARORKA_PASSWORD in Streamlit secrets."
-    )
-    st.stop()
-
-auth_signature = sha256(f"{username}:{password}".encode("utf-8")).hexdigest()
-
-try:
-    with st.spinner("Fetching Marorka OData pages..."):
-        raw_df, fetch_metadata = fetch_all_data(
-            api_base_url,
-            parameter_sets,
-            int(max_pages),
-            auth_signature,
-            username,
-            password,
-        )
-except requests.HTTPError as exc:
-    response_text = exc.response.text[:1000] if exc.response is not None else str(exc)
-    status_code = exc.response.status_code if exc.response is not None else "unknown"
-    st.error(f"Marorka API returned HTTP {status_code}: {response_text}")
-    if exc.response is not None and exc.response.request is not None:
-        failed_url = exc.response.request.url
-        st.caption(f"Failed request URL length: {len(failed_url):,} characters")
-        with st.expander("Failed request URL", expanded=False):
-            st.code(failed_url, language="text")
-    st.info(
-        "For HTTP 404, first try API request type = Connection test. "
-        "If that works, try Date sample. If only Selected metric pull fails, "
-        "the metric filter is likely too large or one ValueDescription is invalid."
-    )
-    st.stop()
-except Exception as exc:
-    st.error(f"Could not load Marorka data: {exc}")
-    st.stop()
-
-raw_df = prepare_raw_data(raw_df)
-pivot_df = pivot_report_data(raw_df)
-
-if pivot_df.empty:
-    st.warning("No data returned for the selected date and metric filters.")
-    st.stop()
-
-with st.sidebar:
-    st.header("Report Filters")
-    vessel_options = sorted(pivot_df["ShipName"].dropna().unique().tolist())
-    selected_vessel = st.selectbox("Vessel", ["All vessels"] + vessel_options)
-
-    report_type_options = sorted(pivot_df["ReportType"].dropna().unique().tolist())
-    selected_report_types = st.multiselect(
-        "Report type",
-        options=report_type_options,
-        default=report_type_options,
-    )
-
-filtered_pivot = pivot_df.copy()
-if selected_vessel != "All vessels":
-    filtered_pivot = filtered_pivot[filtered_pivot["ShipName"] == selected_vessel]
-if selected_report_types:
-    filtered_pivot = filtered_pivot[filtered_pivot["ReportType"].isin(selected_report_types)]
-else:
-    filtered_pivot = filtered_pivot.iloc[0:0]
-
-filtered_report_ids = set(filtered_pivot["ReportId"].dropna().tolist())
-filtered_raw = raw_df[raw_df["ReportId"].isin(filtered_report_ids)].copy()
-latest_df = latest_by_vessel(filtered_pivot)
-
-api_tab, report_tab, tables_tab = st.tabs(
-    ["API Test", "Report Presentation", "Data Tables And Export"]
-)
-
-with api_tab:
-    render_api_test(
-        raw_df,
-        pivot_df,
-        fetch_metadata,
-        parameter_sets,
-        int(max_pages),
-        query_mode,
-        api_base_url,
-    )
-
-with report_tab:
-    if filtered_pivot.empty:
-        st.warning("No reports match the current report filters.")
-    else:
-        render_report_presentation(filtered_pivot)
-
-with tables_tab:
-    if filtered_pivot.empty:
-        st.warning("No reports match the current report filters.")
-    else:
-        render_data_tables(filtered_pivot, filtered_raw, latest_df)
+    first_url = prepared_url(bas
