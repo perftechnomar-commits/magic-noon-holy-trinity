@@ -84,7 +84,7 @@ DEFAULT_VALUES = [
 ]
 
 VESSEL_GROUPS = {
-    "Fleet 1": ["Ateti", "CMA CGM THALASSA", "CZECH", "DOLPHIN II", "GSL CHRISTEL ELISABETH", "GSL VINIA", "MYNY", "SYDNEY EXPRESS"],
+    "Fleet 1": ["ATETI", "CMA CGM THALASSA", "CZECH", "DOLPHIN II", "GSL CHRISTEL ELISABETH", "GSL VINIA", "MYNY", "SYDNEY EXPRESS"],
     "Fleet 2": ["AGIOS DIMITRIOS", "ELENI T", "MAIRA", "MELINA", "NEWYORKER", "NIKOLAS", "TORRANCE"],
     "Fleet 3": ["BREMERHAVEN EXPRESS", "CMA CGM ALCAZAR", "GSL ALICE", "GSL CHATEAU D'IF", "GSL ELEFTHERIA", "GSL MAREN", "GSL MELINA", "ISTANBUL EXPRESS"],
     "Fleet 4": ["ANTHEA Y", "COLOMBIA EXPRESS", "COSTA RICA EXPRESS", "JAMAICA EXPRESS", "MEXICO EXPRESS", "NICARAGUA EXPRESS", "PANAMA EXPRESS", "ZIM NORFOLK", "ZIM XIAMEN"],
@@ -443,6 +443,34 @@ def inject_app_css() -> None:
             border-color: rgba(0, 209, 255, 0.40);
             color: #061018;
         }
+
+        /* Streamlit multiselect selected labels */
+        [data-baseweb="tag"] {
+            background: linear-gradient(135deg, rgba(0, 209, 255, 0.18), rgba(0, 212, 141, 0.14)) !important;
+            border: 1px solid rgba(0, 209, 255, 0.42) !important;
+            border-radius: 8px !important;
+            color: #dff9ff !important;
+            box-shadow: 0 4px 14px rgba(0, 209, 255, 0.10);
+        }
+
+        [data-baseweb="tag"] span,
+        [data-baseweb="tag"] svg {
+            color: #dff9ff !important;
+            fill: #dff9ff !important;
+        }
+
+        [data-testid="stMultiSelect"] [data-baseweb="select"] > div,
+        [data-testid="stSelectbox"] [data-baseweb="select"] > div {
+            background-color: #0f172a !important;
+            border: 1px solid rgba(0, 209, 255, 0.22) !important;
+            border-radius: 8px !important;
+        }
+
+        [data-testid="stMultiSelect"] [data-baseweb="select"] > div:focus-within,
+        [data-testid="stSelectbox"] [data-baseweb="select"] > div:focus-within {
+            border-color: var(--accent) !important;
+            box-shadow: 0 0 0 1px rgba(0, 209, 255, 0.28) !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -604,28 +632,26 @@ def build_query_params(
 ) -> dict[str, str]:
     start_datetime = start_date_value.strftime(date_literal_format)
     end_exclusive_datetime = (end_date_value + timedelta(days=1)).strftime(date_literal_format)
-    filters = ["ValueDescription ne null"]
+    filters: list[str] = []
 
     ship_filter = build_ship_filter(ship_name)
     if ship_filter:
-        filters.insert(0, ship_filter)
+        filters.append(ship_filter)
 
     if include_date_filter:
         filters.append(f"StartDateTimeGMT {date_operator} DateTime'{start_datetime}'")
         filters.append(f"StartDateTimeGMT lt DateTime'{end_exclusive_datetime}'")
 
-    report_type_filter = build_report_type_filter(REPORT_TYPES_TO_EXCLUDE)
-    if report_type_filter:
-        filters.append(report_type_filter.removeprefix("and "))
-
-    if include_value_filter and values:
-        filters.append(f"({build_value_filter(values)})")
+    # Keep the API filter simple. Marorka ReportData can return HTTP 500 when
+    # ValueDescription / ReportType filters are pushed server-side.
+    # These filters are applied locally in filter_report_rows_locally().
 
     params = {
         "$format": "json",
         "$select": ",".join(INDEX_COLUMNS + ["ValueDescription", "ReportedValue"]),
-        "$filter": " and ".join(filters),
     }
+    if filters:
+        params["$filter"] = " and ".join(filters)
 
     if top_limit:
         params["$top"] = str(top_limit)
@@ -740,16 +766,15 @@ def build_parameter_sets(
         build_query_params(
             chunk_start,
             chunk_end,
-            value_chunk,
+            None,
             include_date_filter=True,
-            include_value_filter=True,
+            include_value_filter=False,
             date_literal_format=date_literal_format,
             ship_name=ship_name_chunk,
             order_by_start_desc=False,
         )
         for ship_name_chunk in ship_name_chunks
         for chunk_start, chunk_end in date_chunks(start_date_value, end_date_value)
-        for value_chunk in chunks(values, METRIC_QUERY_CHUNK_SIZE)
     ]
 
 
@@ -1219,6 +1244,24 @@ def add_power_query_calculations(df: pd.DataFrame) -> pd.DataFrame:
             result[column] = numeric_column(result, column) / 100
 
     return result
+
+
+def filter_report_rows_locally(df: pd.DataFrame, selected_values: list[str]) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    filtered = df.copy()
+
+    if "ValueDescription" in filtered.columns and selected_values:
+        filtered = filtered[filtered["ValueDescription"].isin(selected_values)]
+
+    if "ReportType" in filtered.columns:
+        filtered = filtered[~filtered["ReportType"].isin(REPORT_TYPES_TO_EXCLUDE)]
+
+    if "ValueDescription" in filtered.columns:
+        filtered = filtered[filtered["ValueDescription"].notna()]
+
+    return filtered
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -1941,6 +1984,7 @@ def main() -> None:
         st.error(f"Could not load Marorka data: {exc}")
         st.stop()
 
+    raw_df = filter_report_rows_locally(raw_df, selected_values)
     raw_df, pivot_df = transform_report_data(raw_df)
 
     if pivot_df.empty:
