@@ -488,6 +488,17 @@ def inject_app_css() -> None:
             margin-bottom: 0.8rem;
         }
 
+        [data-testid="stAlert"] {
+            border: 1px solid rgba(79, 178, 134, 0.24);
+            border-radius: 8px;
+            background: rgba(79, 178, 134, 0.10);
+            color: rgba(237, 242, 247, 0.90);
+        }
+
+        [data-testid="stAlert"] div {
+            color: rgba(237, 242, 247, 0.90);
+        }
+
         @media (prefers-color-scheme: light) {
             .app-subtitle,
             .section-note {
@@ -591,14 +602,14 @@ def get_default_start_date() -> date:
 def require_dashboard_password() -> bool:
     expected_password = get_secret("DASHBOARD_PASSWORD")
     if not expected_password:
-        st.title(APP_TITLE)
+        render_app_header()
         st.error("DASHBOARD_PASSWORD is not configured in Streamlit secrets.")
         return False
 
     if st.session_state.get("dashboard_authenticated"):
         return True
 
-    st.title(APP_TITLE)
+    render_app_header()
     entered_password = st.text_input("Dashboard password", type="password")
     if st.button("Open dashboard", type="primary"):
         if entered_password == expected_password:
@@ -1663,19 +1674,6 @@ def slider_step(minimum_value: float, maximum_value: float) -> float:
     return 1.0
 
 
-def clamp_range(
-    value_range: tuple[float, float],
-    minimum_value: float,
-    maximum_value: float,
-) -> tuple[float, float]:
-    low_value, high_value = value_range
-    low_value = max(minimum_value, min(float(low_value), maximum_value))
-    high_value = max(minimum_value, min(float(high_value), maximum_value))
-    if low_value > high_value:
-        low_value, high_value = high_value, low_value
-    return low_value, high_value
-
-
 def render_numeric_range_filters(
     df: pd.DataFrame,
     *,
@@ -1683,45 +1681,68 @@ def render_numeric_range_filters(
     label: str = "Numeric columns",
 ) -> dict[str, tuple[float, float] | None]:
     numeric_options = numeric_filter_columns(df)
+    selected_key = f"{key_prefix}_columns"
+    previous_columns = st.session_state.get(selected_key, [])
+    if not isinstance(previous_columns, list):
+        previous_columns = []
+    numeric_options = unique_preserve_order(previous_columns + numeric_options)
+
     selected_columns = st.multiselect(
         label,
         options=numeric_options,
         default=[],
-        key=f"{key_prefix}_columns",
+        key=selected_key,
         help="Choose any numeric column loaded from the API or calculated by the dashboard.",
     )
 
     ranges: dict[str, tuple[float, float] | None] = {}
     for column in selected_columns:
+        if column not in df.columns:
+            st.caption(f"{column}: kept, but not returned in the current loaded data.")
+            continue
+
         numeric_values = pd.to_numeric(df[column], errors="coerce").dropna()
         if numeric_values.empty:
+            st.caption(f"{column}: kept, but no numeric values are available in the current loaded data.")
             continue
 
         minimum_value = float(numeric_values.min())
         maximum_value = float(numeric_values.max())
-        if minimum_value == maximum_value:
-            st.caption(f"{column}: only {format_value(minimum_value)} available.")
-            ranges[column] = (minimum_value, maximum_value)
-            continue
-
+        step = slider_step(minimum_value, maximum_value)
         key = stable_widget_key(key_prefix, column)
-        default_range = (minimum_value, maximum_value)
-        if key in st.session_state:
-            st.session_state[key] = clamp_range(
-                st.session_state[key],
-                minimum_value,
-                maximum_value,
-            )
+        low_key = f"{key}_min"
+        high_key = f"{key}_max"
 
-        ranges[column] = st.slider(
-            column,
-            min_value=minimum_value,
-            max_value=maximum_value,
-            value=st.session_state.get(key, default_range),
-            step=slider_step(minimum_value, maximum_value),
-            format="%.3f",
-            key=key,
+        st.caption(
+            f"{column}: loaded range {format_value(minimum_value)} to {format_value(maximum_value)}"
         )
+        low_column, high_column = st.columns(2)
+        low_value = low_column.number_input(
+            "Min",
+            value=float(st.session_state.get(low_key, minimum_value)),
+            step=step,
+            format="%.3f",
+            key=low_key,
+            help=f"Minimum {column}",
+        )
+        high_value = high_column.number_input(
+            "Max",
+            value=float(st.session_state.get(high_key, maximum_value)),
+            step=step,
+            format="%.3f",
+            key=high_key,
+            help=f"Maximum {column}",
+        )
+
+        low_value = float(low_value)
+        high_value = float(high_value)
+        if low_value > high_value:
+            st.warning(
+                f"{column}: min is greater than max, so the dashboard applies them in reverse order."
+            )
+            low_value, high_value = high_value, low_value
+
+        ranges[column] = (low_value, high_value)
 
     return ranges
 
@@ -1923,10 +1944,11 @@ def render_operational_dashboard(
     render_dashboard_table(filtered_df, visible_columns)
 
 
+inject_app_css()
+
 if not require_dashboard_password():
     st.stop()
 
-inject_app_css()
 render_app_header()
 
 with st.sidebar:
@@ -2052,6 +2074,7 @@ with st.sidebar:
     raw_vessel_options = sorted(raw_df["ShipName"].dropna().unique().tolist())
     loaded_start_date = start_date_input
     loaded_end_date = end_date_input
+    selected_vessels = []
 
     with st.expander("Loaded data coverage"):
         st.metric("API rows", f"{len(raw_df):,}")
@@ -2074,13 +2097,8 @@ with st.sidebar:
             else:
                 st.warning("No matching vessel name was returned by the API for this data window.")
 
-    selected_vessels = st.multiselect(
-        "Vessels",
-        options=vessel_options,
-        default=[],
-        key="filter_vessels",
-        help="Leave blank to include all vessels.",
-    )
+    if vessel_options:
+        st.caption(f"Loaded vessel: {', '.join(vessel_options)}")
 
     report_type_options = sorted(pivot_df["ReportType"].dropna().unique().tolist())
     selected_report_types = st.multiselect(
@@ -2115,12 +2133,10 @@ with st.sidebar:
 
     with st.expander("Boiler KPI Filters"):
         st.caption("These filters affect only the Sum of Boiler Sum KPI.")
-        clamp_date_range_state("filter_boiler_date_range", loaded_start_date, loaded_end_date)
+        boiler_vessels = []
         boiler_date_range = st.date_input(
             "Boiler date range",
             value=(loaded_start_date, loaded_end_date),
-            min_value=loaded_start_date,
-            max_value=loaded_end_date,
             key="filter_boiler_date_range",
         )
         if isinstance(boiler_date_range, tuple) and len(boiler_date_range) == 2:
@@ -2128,13 +2144,6 @@ with st.sidebar:
         else:
             boiler_start_date, boiler_end_date = loaded_start_date, loaded_end_date
 
-        boiler_vessels = st.multiselect(
-            "Boiler vessels",
-            options=vessel_options,
-            default=[],
-            key="filter_boiler_vessels",
-            help="Leave blank to include all vessels for the boiler KPI.",
-        )
         boiler_report_types = st.multiselect(
             "Boiler report types",
             options=report_type_options,
