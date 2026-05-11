@@ -56,22 +56,15 @@ VESSEL_DISCOVERY_VALUES = [
 ]
 
 DEFAULT_VALUES = [
-    "Steaming Time Since Last Report [hh:mm]",
-    "Draft Forward [m] (m)",
-    "Draft Aft [m] (m)",
+    # Calculated Slip
     "Engine Distance [nm]",
     "Distance Over Ground [nm]",
-    "Distance Through Water [nm]",
-    "Shaft 1 RPM (rpm)",
-    "ME Rev Since Last Report",
-    "Water speed [kn Log] (kn)",
-    "Speed over ground [kn GPS] (kn)",
-    "Current Speed [kn]",
+
+    # ME Load [%MCR]
     "ME Load [%MCR]",
+
+    # SFOC [gr/Kwh]
     "Power from Torque Meter [kW]",
-    "Total Shaft Power [kW] (kW)",
-    "Total DG Power [kW] (kW)",
-    "Total Electric Load [kW]",
     "Main Engine - HSHFO",
     "Main Engine - HSLFO",
     "Main Engine - MGO",
@@ -79,20 +72,8 @@ DEFAULT_VALUES = [
     "Main Engine - ULSLFO",
     "Main Engine - VLSHFO",
     "Main Engine - VLSLFO",
-    "Diesel Generator - HSHFO",
-    "Diesel Generator - HSLFO",
-    "Diesel Generator - MGO",
-    "Diesel Generator - ULSHFO",
-    "Diesel Generator - ULSLFO",
-    "Diesel Generator - VLSHFO",
-    "Diesel Generator - VLSLFO",
-    "Diesel Generators - HSHFO",
-    "Diesel Generators - HSLFO",
-    "Diesel Generators - MGO",
-    "Diesel Generators - ULSHFO",
-    "Diesel Generators - ULSLFO",
-    "Diesel Generators - VLSHFO",
-    "Diesel Generators - VLSLFO",
+
+    # Boiler Sum
     "Boiler - HSHFO",
     "Boiler - HSLFO",
     "Boiler - MGO",
@@ -100,48 +81,6 @@ DEFAULT_VALUES = [
     "Boiler - ULSLFO",
     "Boiler - VLSHFO",
     "Boiler - VLSLFO",
-    "ROB_HSHFO",
-    "ROB_HSLFO",
-    "ROB_MGO",
-    "ROB_ULSHFO",
-    "ROB_ULSLFO",
-    "ROB_VLSHFO",
-    "ROB_VLSLFO",
-    "ROB_Cylinder Oil",
-    "DG1 Running Hours [hh:mm]",
-    "DG2 Running Hours [hh:mm]",
-    "DG3 Running Hours [hh:mm]",
-    "DG4 Running Hours [hh:mm]",
-    "DG1 Running Time [h] (h)",
-    "DG2 Running Time [h] (h)",
-    "DG3 Running Time [h] (h)",
-    "DG4 Running Time [h] (h)",
-    "Shaft Generator Running Hours [hh:mm]",
-    "DG1 Load [% MCR]",
-    "DG2 Load [% MCR]",
-    "DG3 Load [% MCR]",
-    "DG4 Load [% MCR]",
-    "Speed Ordered by the Charterers [kn]",
-    "Shaft Generator Power [kW]",
-    "20ft Reefer Units",
-    "40ft Reefer Units",
-    "Total Number Reefer Units (20 and 40ft)",
-    "Reefer Power [kW]",
-    "Reefer Energy [kWh]",
-    "Average Power per Reefer [kW]",
-    "Bilge Water Produced [cbm]",
-    "Bilge Water Disposed Through OWS [cbm]",
-    "FW Consumed [cbm]",
-    "Sludge Produced [cbm]",
-    "FW Produced [cbm]",
-    "FW Received [cbm]",
-    "Air Cooler Air Press Drop [mmWC]",
-    "Sea Load [kW]",
-    "Load from AMS [kW]",
-    "Slip Average [%]",
-    "Bending Moments [%]",
-    "Shearing Forces [%]",
-    "Torsional Moments [%]",
 ]
 
 COLUMN_ALIASES = {
@@ -520,6 +459,25 @@ def get_int_secret(name: str, default: int) -> int:
         return int(get_secret(name, str(default)))
     except ValueError:
         return default
+
+
+def default_report_window(today: date | None = None) -> tuple[date, date]:
+    today = today or date.today()
+
+    month = today.month - 2
+    year = today.year
+    while month <= 0:
+        month += 12
+        year -= 1
+
+    start_date = date(year, month, 1)
+
+    if today.month == 12:
+        end_date = date(today.year, 12, 31)
+    else:
+        end_date = date(today.year, today.month + 1, 1) - timedelta(days=1)
+
+    return start_date, end_date
 
 
 def get_default_start_date() -> date:
@@ -1838,8 +1796,9 @@ def main() -> None:
         date_format_label = "Date only"
 
         st.header("Data Window")
-        start_date_input = st.date_input("Start date", value=get_default_start_date(), format=UI_DATE_INPUT_FORMAT)
-        end_date_input = st.date_input("End date", value=date.today(), format=UI_DATE_INPUT_FORMAT)
+        default_start_date, default_end_date = default_report_window()
+        start_date_input = st.date_input("Start date", value=default_start_date, format=UI_DATE_INPUT_FORMAT)
+        end_date_input = st.date_input("End date", value=default_end_date, format=UI_DATE_INPUT_FORMAT)
         st.caption("Date format: DD/MM/YYYY")
 
         if end_date_input < start_date_input:
