@@ -23,8 +23,8 @@ SAMPLE_ROW_LIMIT = 100
 METRIC_QUERY_CHUNK_SIZE = 8
 
 DATE_LITERAL_FORMATS = {
-    "Date only": "%Y-%m-%d",
-    "Date and time": "%Y-%m-%dT00:00:00",
+    "Date only": "%d-%m-%Y",
+    "Date and time": "%d-%m-%YT00:00:00",
 }
 
 REPORT_TYPES_TO_EXCLUDE = [
