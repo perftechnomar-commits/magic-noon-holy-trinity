@@ -727,6 +727,31 @@ def build_vessel_query_params(
     }
 
 
+def build_value_description_query_params(
+    start_date_value: date,
+    end_date_value: date,
+    date_literal_format: str,
+    ship_name: str,
+) -> dict[str, str]:
+    start_datetime = start_date_value.strftime(date_literal_format)
+    end_exclusive_datetime = (end_date_value + timedelta(days=1)).strftime(date_literal_format)
+    report_type_filter = build_report_type_filter(REPORT_TYPES_TO_EXCLUDE)
+    filters = [
+        "ValueDescription ne null",
+        f"ShipName eq '{escape_odata_text(ship_name)}'",
+        f"StartDateTimeGMT ge DateTime'{start_datetime}'",
+        f"StartDateTimeGMT lt DateTime'{end_exclusive_datetime}'",
+    ]
+    if report_type_filter:
+        filters.append(report_type_filter.removeprefix("and "))
+
+    return {
+        "$format": "json",
+        "$select": "ValueDescription",
+        "$filter": " and ".join(filters),
+    }
+
+
 def build_parameter_sets(
     query_mode: str,
     start_date_value: date,
@@ -785,8 +810,8 @@ def build_parameter_sets(
     # multi-month windows inside Streamlit Cloud's memory/time limits.
     return [
         build_query_params(
-            start_date_value,
-            end_date_value,
+            chunk_start,
+            chunk_end,
             value_chunk,
             include_date_filter=True,
             include_value_filter=True,
@@ -794,6 +819,7 @@ def build_parameter_sets(
             ship_name=ship_name,
             order_by_start_desc=True,
         )
+        for chunk_start, chunk_end in date_chunks(start_date_value, end_date_value)
         for value_chunk in chunks(values, METRIC_QUERY_CHUNK_SIZE)
     ]
 
@@ -882,6 +908,60 @@ def fetch_vessel_options(
         "stopped_by_page_limit": stopped_by_page_limit,
     }
     return sorted(unique_preserve_order(vessels), key=str.casefold), metadata
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_value_descriptions(
+    base_url: str,
+    parameters: dict[str, str],
+    page_safety_limit: int,
+    auth_signature: str,
+    _username: str,
+    _password: str,
+) -> tuple[list[str], dict[str, int | float | bool]]:
+    values: list[str] = []
+    total_pages = 0
+    total_bytes = 0
+    started_at = perf_counter()
+    session = make_session()
+    stopped_by_page_limit = False
+    next_url: str | None = base_url
+    local_params = parameters.copy()
+
+    while next_url:
+        total_pages += 1
+        response = session.get(
+            next_url,
+            params=local_params if total_pages == 1 else None,
+            auth=HTTPBasicAuth(_username, _password),
+            headers={"Accept": "application/json"},
+            timeout=120,
+        )
+        total_bytes += len(response.content)
+        response.raise_for_status()
+
+        page_rows, next_link = extract_rows(response.json())
+        for row in page_rows:
+            value_description = str(row.get("ValueDescription") or "").strip()
+            if value_description:
+                values.append(value_description)
+
+        if total_pages >= page_safety_limit and next_link:
+            stopped_by_page_limit = True
+            break
+
+        next_url = urljoin(base_url, next_link) if next_link else None
+        local_params = {}
+
+    metadata = {
+        "values": len(values),
+        "unique_values": len(set(values)),
+        "pages": total_pages,
+        "downloaded_mb": round(total_bytes / 1024 / 1024, 2),
+        "elapsed_seconds": round(perf_counter() - started_at, 2),
+        "stopped_by_page_limit": stopped_by_page_limit,
+    }
+    return sorted(unique_preserve_order(values), key=str.casefold), metadata
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -2052,9 +2132,8 @@ with st.sidebar:
     password = get_secret("MARORKA_PASSWORD")
 
     api_base_url = get_secret("MARORKA_BASE_URL", BASE_URL).strip() or BASE_URL
-    query_mode = "Excel-style full pull"
+    query_mode = "Dashboard metric pull"
     date_format_label = "Date only"
-    selected_values = DEFAULT_VALUES
     page_safety_limit = get_int_secret("MARORKA_PAGE_SAFETY_LIMIT", PAGE_SAFETY_LIMIT)
 
     st.header("Data Window")
@@ -2086,6 +2165,7 @@ with st.sidebar:
     refresh_api = st.button("Refresh API data", use_container_width=True)
     if refresh_api:
         fetch_vessel_options.clear()
+        fetch_value_descriptions.clear()
         fetch_all_data.clear()
         transform_report_data.clear()
 
@@ -2128,6 +2208,53 @@ with st.sidebar:
     )
     api_ship_name = selected_api_vessel.strip()
 
+    selected_values = DEFAULT_VALUES
+    if api_ship_name:
+        value_query_params = build_value_description_query_params(
+            start_date_input,
+            end_date_input,
+            DATE_LITERAL_FORMATS[date_format_label],
+            api_ship_name,
+        )
+        try:
+            with st.spinner("Loading API variable list from Marorka..."):
+                value_description_options, value_metadata = fetch_value_descriptions(
+                    api_base_url,
+                    value_query_params,
+                    page_safety_limit,
+                    auth_signature,
+                    username,
+                    password,
+                )
+        except requests.HTTPError as exc:
+            status_code = exc.response.status_code if exc.response is not None else "unknown"
+            st.error(f"Could not load API variable list from Marorka. HTTP {status_code}.")
+            st.stop()
+        except Exception as exc:
+            st.error(f"Could not load API variable list from Marorka: {exc}")
+            st.stop()
+
+        if value_metadata.get("stopped_by_page_limit"):
+            st.warning("The API variable list reached the safety page limit and may be incomplete.")
+        previous_extra_values = st.session_state.get("api_extra_values", [])
+        if not isinstance(previous_extra_values, list):
+            previous_extra_values = []
+        extra_value_options = unique_preserve_order(previous_extra_values + [
+            value for value in value_description_options if value not in DEFAULT_VALUES
+        ])
+        extra_values = st.multiselect(
+            "Additional API variables",
+            options=extra_value_options,
+            default=[],
+            key="api_extra_values",
+            help=(
+                "The dashboard loads its required variables automatically. "
+                "Add more only when you need them for table columns or numeric filters."
+            ),
+        )
+        selected_values = unique_preserve_order(DEFAULT_VALUES + extra_values)
+        st.caption(f"Dashboard will load {len(selected_values):,} API variables.")
+
     load_fetch = st.button(
         "Load dashboard data",
         type="primary",
@@ -2139,6 +2266,7 @@ active_request = {
     "start_date": start_date_input.isoformat(),
     "end_date": end_date_input.isoformat(),
     "ship_name": api_ship_name,
+    "values_signature": sha256("|".join(selected_values).encode("utf-8")).hexdigest(),
 }
 
 if load_fetch:
