@@ -437,9 +437,7 @@ def render_app_header() -> None:
     st.markdown(
         """
         <div class="app-header">
-            <div class="app-eyebrow">Marorka performance monitoring</div>
             <h1>Fleet Performance Dashboard</h1>
-            <div class="app-subtitle">Selected vessel analysis | live API snapshot | Power Query aligned calculations</div>
         </div>
         """,
         unsafe_allow_html=True,
