@@ -1,5 +1,6 @@
 streamlit
 pandas
 requests
+urllib3
 xlsxwriter
-jinja2
+openpyxl
