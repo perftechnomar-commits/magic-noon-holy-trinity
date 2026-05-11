@@ -21,6 +21,7 @@ DEFAULT_START_DATE = "2026-01-01"
 PAGE_SAFETY_LIMIT = 2000
 SAMPLE_ROW_LIMIT = 100
 METRIC_QUERY_CHUNK_SIZE = 8
+QUERY_DATE_CHUNK_DAYS = 31
 
 DATE_LITERAL_FORMATS = {
     "Date only": "%Y-%m-%d",
@@ -28,6 +29,14 @@ DATE_LITERAL_FORMATS = {
 }
 UI_DATE_INPUT_FORMAT = "DD/MM/YYYY"
 DISPLAY_DATETIME_FORMAT = "%d/%m/%Y %H:%M"
+
+VESSEL_DISCOVERY_VALUES = [
+    "Steaming Time Since Last Report [hh:mm]",
+    "Draft Forward [m] (m)",
+    "Draft Aft [m] (m)",
+    "Engine Distance [nm]",
+    "Shaft 1 RPM (rpm)",
+]
 
 REPORT_TYPES_TO_EXCLUDE = [
     "Intake Report",
@@ -267,34 +276,36 @@ def inject_app_css() -> None:
         """
         <style>
         :root {
-            --page-bg: #141820;
-            --panel-bg: #1b2029;
-            --sidebar-bg: #20242e;
-            --border-soft: rgba(183, 197, 214, 0.16);
-            --text-soft: rgba(237, 242, 247, 0.68);
-            --accent: #4fb286;
-            --accent-strong: #3d9b8f;
-            --accent-muted: rgba(79, 178, 134, 0.16);
+            --page-bg: #0b1018;
+            --panel-bg: #111827;
+            --panel-soft: #162033;
+            --sidebar-bg: #0f1724;
+            --border-soft: rgba(148, 163, 184, 0.22);
+            --text-soft: #9ca3af;
+            --text-strong: #f8fafc;
+            --accent: #00d1ff;
+            --accent-strong: #00b8d9;
+            --accent-muted: rgba(0, 209, 255, 0.14);
+            --green: #00d48d;
         }
 
         .stApp {
-            background:
-                linear-gradient(180deg, rgba(29, 35, 45, 0.96) 0%, var(--page-bg) 36%, #11151b 100%);
+            background: linear-gradient(180deg, #101827 0%, var(--page-bg) 40%, #080d14 100%);
         }
 
         .block-container {
-            max-width: 1480px;
-            padding-top: 1.5rem;
-            padding-bottom: 2rem;
+            max-width: 1280px;
+            padding-top: 2.8rem;
+            padding-bottom: 3rem;
         }
 
         [data-testid="stSidebar"] {
-            background: var(--sidebar-bg);
+            background: linear-gradient(180deg, var(--sidebar-bg) 0%, #0b1018 100%);
             border-right: 1px solid var(--border-soft);
         }
 
         [data-testid="stHeader"] {
-            background: rgba(20, 24, 32, 0.86);
+            background: rgba(11, 16, 24, 0.88);
             backdrop-filter: blur(8px);
         }
 
@@ -304,66 +315,77 @@ def inject_app_css() -> None:
         }
 
         h1 {
-            font-size: 2rem;
-            font-weight: 750;
-            margin-bottom: 0.2rem;
+            font-size: 2.6rem;
+            font-weight: 850;
+            line-height: 1.06;
+            margin: 0;
+            color: var(--text-strong);
         }
 
         h2, h3 {
-            font-weight: 700;
+            font-weight: 800;
+            color: var(--text-strong);
         }
 
         .app-header {
-            border-bottom: 1px solid var(--border-soft);
-            margin-bottom: 1rem;
-            padding-bottom: 0.9rem;
+            padding: 1.65rem 1.9rem;
+            border: 1px solid var(--border-soft);
+            border-radius: 8px;
+            background: linear-gradient(135deg, rgba(17, 24, 39, 0.98), rgba(15, 23, 42, 0.88));
+            box-shadow: 0 20px 54px rgba(0, 0, 0, 0.30);
+            margin-bottom: 1.25rem;
         }
 
         .app-eyebrow {
             color: var(--accent);
-            font-size: 0.82rem;
-            font-weight: 700;
-            margin-bottom: 0.2rem;
+            text-transform: uppercase;
+            letter-spacing: 0;
+            font-size: 0.78rem;
+            font-weight: 850;
+            margin-bottom: 0.55rem;
         }
 
         .app-subtitle {
-            color: rgba(250, 250, 250, 0.68);
+            color: var(--text-soft);
             font-size: 0.95rem;
             max-width: 880px;
+            margin-top: 0.8rem;
         }
 
         .kpi-card {
             border: 1px solid var(--border-soft);
-            border-left: 5px solid var(--accent);
+            border-top: 3px solid var(--accent);
             border-radius: 8px;
-            padding: 0.9rem 1rem;
-            min-height: 116px;
-            background: var(--panel-bg);
+            padding: 1rem 1.05rem;
+            min-height: 128px;
+            background: linear-gradient(180deg, rgba(22, 32, 51, 0.98), rgba(17, 24, 39, 0.98));
+            box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
         }
 
         .kpi-label {
-            color: rgba(250, 250, 250, 0.68);
-            font-size: 0.76rem;
-            font-weight: 700;
+            color: #aeb8c7;
+            font-size: 0.78rem;
+            font-weight: 800;
             letter-spacing: 0;
             margin-bottom: 0.45rem;
         }
 
         .kpi-value {
-            color: var(--accent);
-            font-size: 1.7rem;
-            font-weight: 800;
+            color: var(--text-strong);
+            font-size: 1.9rem;
+            font-weight: 850;
             line-height: 1.15;
+            overflow-wrap: anywhere;
         }
 
         .kpi-footnote {
-            color: rgba(250, 250, 250, 0.55);
+            color: var(--text-soft);
             font-size: 0.74rem;
             margin-top: 0.45rem;
         }
 
         .tone-good {
-            --accent: #4fb286;
+            --accent: #00d48d;
         }
 
         .tone-watch {
@@ -375,7 +397,7 @@ def inject_app_css() -> None:
         }
 
         .tone-info {
-            --accent: #5f9ea0;
+            --accent: #00d1ff;
         }
 
         .tone-neutral {
@@ -384,21 +406,26 @@ def inject_app_css() -> None:
 
         [data-testid="stMetric"] {
             border: 1px solid var(--border-soft);
-            border-left: 4px solid var(--accent);
+            border-top: 3px solid var(--accent);
             border-radius: 8px;
-            padding: 0.85rem 0.95rem;
-            background: var(--panel-bg);
+            padding: 0.95rem 1rem;
+            background: linear-gradient(180deg, rgba(22, 32, 51, 0.98), rgba(17, 24, 39, 0.98));
+            min-height: 104px;
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
         }
 
         [data-testid="stMetricLabel"] p {
-            color: rgba(250, 250, 250, 0.72);
+            color: #aeb8c7;
             font-size: 0.78rem;
-            font-weight: 650;
+            font-weight: 750;
         }
 
         [data-testid="stMetricValue"] {
+            color: var(--text-strong);
             font-size: 1.55rem;
-            font-weight: 750;
+            font-weight: 850;
+            white-space: normal;
+            overflow-wrap: anywhere;
         }
 
         [data-testid="stTabs"] button {
@@ -422,57 +449,67 @@ def inject_app_css() -> None:
             border: 1px solid var(--border-soft);
             border-radius: 8px;
             overflow: hidden;
+            box-shadow: 0 14px 32px rgba(0, 0, 0, 0.24);
         }
 
         div.stButton > button {
-            border-radius: 6px;
-            font-weight: 650;
+            border-radius: 8px;
+            font-weight: 800;
         }
 
         div.stButton > button[kind="primary"] {
-            background: var(--accent-strong);
-            border-color: var(--accent-strong);
-            color: #ffffff;
+            background: linear-gradient(135deg, var(--accent-strong), var(--green));
+            border-color: rgba(0, 209, 255, 0.40);
+            color: #061018;
         }
 
         div.stButton > button[kind="primary"]:hover {
-            background: #34887f;
-            border-color: #34887f;
-            color: #ffffff;
+            background: linear-gradient(135deg, #00c5ea, #00e09b);
+            border-color: rgba(0, 209, 255, 0.58);
+            color: #061018;
         }
 
         div.stButton > button:not([kind="primary"]) {
             border-color: var(--border-soft);
+            background: rgba(17, 24, 39, 0.74);
         }
 
         [data-baseweb="tag"] {
             background-color: var(--accent-muted);
-            border: 1px solid rgba(79, 178, 134, 0.34);
-            color: #dff6ee;
+            border: 1px solid rgba(0, 209, 255, 0.34);
+            color: #dff9ff;
         }
 
         [data-baseweb="tag"] span {
-            color: #dff6ee;
+            color: #dff9ff;
+        }
+
+        [data-baseweb="select"] > div,
+        [data-testid="stTextInput"] input,
+        [data-testid="stNumberInput"] input {
+            background-color: #0f172a !important;
+            border: 1px solid rgba(0, 209, 255, 0.22) !important;
+            border-radius: 8px !important;
         }
 
         input:focus,
         textarea:focus,
         [data-baseweb="select"] > div:focus-within {
             border-color: var(--accent) !important;
-            box-shadow: 0 0 0 1px rgba(79, 178, 134, 0.28) !important;
+            box-shadow: 0 0 0 1px rgba(0, 209, 255, 0.28) !important;
         }
 
         .section-note {
-            color: rgba(250, 250, 250, 0.62);
+            color: var(--text-soft);
             font-size: 0.88rem;
             margin-top: -0.35rem;
             margin-bottom: 0.8rem;
         }
 
         [data-testid="stAlert"] {
-            border: 1px solid rgba(79, 178, 134, 0.24);
+            border: 1px solid rgba(0, 209, 255, 0.24);
             border-radius: 8px;
-            background: rgba(79, 178, 134, 0.10);
+            background: rgba(0, 209, 255, 0.10);
             color: rgba(237, 242, 247, 0.90);
         }
 
@@ -516,8 +553,9 @@ def render_app_header() -> None:
     st.markdown(
         """
         <div class="app-header">
-            <div class="app-eyebrow">Magic Noon alla Mantalos</div>
+            <div class="app-eyebrow">Marorka performance monitoring</div>
             <h1>Fleet Performance Dashboard</h1>
+            <div class="app-subtitle">Magic Noon alla Mantalos | selected vessel analysis | live API snapshot</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -604,6 +642,20 @@ def chunks(values: list[str], size: int) -> list[list[str]]:
     return [values[index : index + size] for index in range(0, len(values), size)]
 
 
+def date_chunks(
+    start_date_value: date,
+    end_date_value: date,
+    chunk_days: int = QUERY_DATE_CHUNK_DAYS,
+) -> list[tuple[date, date]]:
+    ranges = []
+    chunk_start = start_date_value
+    while chunk_start <= end_date_value:
+        chunk_end = min(chunk_start + timedelta(days=chunk_days - 1), end_date_value)
+        ranges.append((chunk_start, chunk_end))
+        chunk_start = chunk_end + timedelta(days=1)
+    return ranges
+
+
 def build_query_params(
     start_date_value: date,
     end_date_value: date,
@@ -666,6 +718,8 @@ def build_vessel_query_params(
     if report_type_filter:
         filters.append(report_type_filter.removeprefix("and "))
 
+    filters.append(f"({build_value_filter(VESSEL_DISCOVERY_VALUES)})")
+
     return {
         "$format": "json",
         "$select": "ShipName",
@@ -713,16 +767,17 @@ def build_parameter_sets(
     if query_mode == "Excel-style full pull":
         return [
             build_query_params(
-                start_date_value,
-                end_date_value,
+                chunk_start,
+                chunk_end,
                 None,
                 include_date_filter=True,
                 include_value_filter=False,
                 date_literal_format=date_literal_format,
                 ship_name=ship_name,
-                date_operator="gt",
+                date_operator="ge",
                 order_by_start_desc=True,
             )
+            for chunk_start, chunk_end in date_chunks(start_date_value, end_date_value)
         ]
 
     # Default dashboard path: query only the value descriptions used by the
@@ -2013,6 +2068,7 @@ with st.sidebar:
         value=date.today(),
         format=UI_DATE_INPUT_FORMAT,
     )
+    st.caption("Date format: DD/MM/YYYY")
 
     if end_date_input < start_date_input:
         st.warning("End date must be on or after start date.")
