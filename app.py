@@ -18,30 +18,9 @@ APP_TITLE = "Magic Noon alla Mantalos"
 BASE_URL = "https://online.marorka.com/Odata/v1/ODataService.svc/ReportData"
 DEFAULT_DAYS_BACK = 30
 DEFAULT_START_DATE = "2026-01-01"
-DEFAULT_API_SHIP_FILTER = ""
 PAGE_SAFETY_LIMIT = 2000
 SAMPLE_ROW_LIMIT = 100
 METRIC_QUERY_CHUNK_SIZE = 8
-
-DEFAULT_VESSEL_OPTIONS = [
-    "Athena Y",
-    "Colombia Express",
-    "Costa Rica Express",
-    "Jamaica Express",
-    "Mexico Express",
-    "Nicaragua Express",
-    "Panama Express",
-    "Sambhar",
-    "Zim Norfolk",
-    "Zim Xiamen",
-]
-
-QUERY_MODES = [
-    "Dashboard metric pull",
-    "Excel-style full pull",
-    "Connection test",
-    "Date sample",
-]
 
 DATE_LITERAL_FORMATS = {
     "Date only": "%Y-%m-%d",
@@ -557,14 +536,6 @@ def get_int_secret(name: str, default: int) -> int:
         return default
 
 
-def split_text_values(value: str) -> list[str]:
-    separators = [",", ";", "\n"]
-    normalized = value
-    for separator in separators:
-        normalized = normalized.replace(separator, "\n")
-    return [item.strip() for item in normalized.splitlines() if item.strip()]
-
-
 def unique_preserve_order(values: list[str]) -> list[str]:
     seen = set()
     result = []
@@ -574,15 +545,6 @@ def unique_preserve_order(values: list[str]) -> list[str]:
             seen.add(key)
             result.append(value)
     return result
-
-
-def configured_vessel_options() -> list[str]:
-    configured_values = split_text_values(get_secret("MARORKA_VESSELS"))
-    secret_ship = get_secret("MARORKA_SHIP_NAME", DEFAULT_API_SHIP_FILTER).strip()
-    options = configured_values or DEFAULT_VESSEL_OPTIONS
-    if secret_ship:
-        options = [secret_ship] + options
-    return sorted(unique_preserve_order(options), key=str.casefold)
 
 
 def get_default_start_date() -> date:
@@ -686,6 +648,29 @@ def build_query_params(
     return params
 
 
+def build_vessel_query_params(
+    start_date_value: date,
+    end_date_value: date,
+    date_literal_format: str,
+) -> dict[str, str]:
+    start_datetime = start_date_value.strftime(date_literal_format)
+    end_exclusive_datetime = (end_date_value + timedelta(days=1)).strftime(date_literal_format)
+    report_type_filter = build_report_type_filter(REPORT_TYPES_TO_EXCLUDE)
+    filters = [
+        "ValueDescription ne null",
+        f"StartDateTimeGMT gt DateTime'{start_datetime}'",
+        f"StartDateTimeGMT lt DateTime'{end_exclusive_datetime}'",
+    ]
+    if report_type_filter:
+        filters.append(report_type_filter.removeprefix("and "))
+
+    return {
+        "$format": "json",
+        "$select": "ShipName",
+        "$filter": " and ".join(filters),
+    }
+
+
 def build_parameter_sets(
     query_mode: str,
     start_date_value: date,
@@ -786,6 +771,60 @@ def make_session() -> requests.Session:
     session.mount("https://", adapter)
     session.mount("http://", adapter)
     return session
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_vessel_options(
+    base_url: str,
+    parameters: dict[str, str],
+    page_safety_limit: int,
+    auth_signature: str,
+    _username: str,
+    _password: str,
+) -> tuple[list[str], dict[str, int | float | bool]]:
+    vessels: list[str] = []
+    total_pages = 0
+    total_bytes = 0
+    started_at = perf_counter()
+    session = make_session()
+    stopped_by_page_limit = False
+    next_url: str | None = base_url
+    local_params = parameters.copy()
+
+    while next_url:
+        total_pages += 1
+        response = session.get(
+            next_url,
+            params=local_params if total_pages == 1 else None,
+            auth=HTTPBasicAuth(_username, _password),
+            headers={"Accept": "application/json"},
+            timeout=120,
+        )
+        total_bytes += len(response.content)
+        response.raise_for_status()
+
+        page_rows, next_link = extract_rows(response.json())
+        for row in page_rows:
+            vessel_name = str(row.get("ShipName") or "").strip()
+            if vessel_name:
+                vessels.append(vessel_name)
+
+        if total_pages >= page_safety_limit and next_link:
+            stopped_by_page_limit = True
+            break
+
+        next_url = urljoin(base_url, next_link) if next_link else None
+        local_params = {}
+
+    metadata = {
+        "vessels": len(vessels),
+        "unique_vessels": len(set(vessels)),
+        "pages": total_pages,
+        "downloaded_mb": round(total_bytes / 1024 / 1024, 2),
+        "elapsed_seconds": round(perf_counter() - started_at, 2),
+        "stopped_by_page_limit": stopped_by_page_limit,
+    }
+    return sorted(unique_preserve_order(vessels), key=str.casefold), metadata
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -1965,31 +2004,73 @@ with st.sidebar:
     start_date_input = st.date_input("Start date", value=get_default_start_date())
     end_date_input = st.date_input("End date", value=date.today())
 
-    vessel_options_before_load = configured_vessel_options()
-    preferred_vessel = get_secret("MARORKA_SHIP_NAME", DEFAULT_API_SHIP_FILTER).strip()
-    vessel_index = (
-        vessel_options_before_load.index(preferred_vessel) + 1
-        if preferred_vessel in vessel_options_before_load
-        else 0
+    if end_date_input < start_date_input:
+        st.warning("End date must be on or after start date.")
+        st.stop()
+
+    if not username or not password:
+        st.error(
+            "Marorka API credentials are not configured. Add MARORKA_USERNAME and "
+            "MARORKA_PASSWORD in Streamlit secrets."
+        )
+        st.stop()
+
+    auth_signature = sha256(f"{username}:{password}".encode("utf-8")).hexdigest()
+
+    refresh_vessels = st.button("Refresh vessel list", use_container_width=True)
+    if refresh_vessels:
+        fetch_vessel_options.clear()
+
+    vessel_query_params = build_vessel_query_params(
+        start_date_input,
+        end_date_input,
+        DATE_LITERAL_FORMATS[date_format_label],
     )
+    try:
+        with st.spinner("Loading vessel list from Marorka..."):
+            vessel_options_before_load, vessel_metadata = fetch_vessel_options(
+                api_base_url,
+                vessel_query_params,
+                page_safety_limit,
+                auth_signature,
+                username,
+                password,
+            )
+    except requests.HTTPError as exc:
+        status_code = exc.response.status_code if exc.response is not None else "unknown"
+        st.error(f"Could not load vessel list from Marorka. HTTP {status_code}.")
+        st.stop()
+    except Exception as exc:
+        st.error(f"Could not load vessel list from Marorka: {exc}")
+        st.stop()
+
+    if vessel_metadata.get("stopped_by_page_limit"):
+        st.warning("The vessel list reached the API safety page limit and may be incomplete.")
+    if not vessel_options_before_load:
+        st.warning("No vessels were returned by the API for this date window.")
+        st.stop()
+
+    vessel_select_options = [""] + vessel_options_before_load
+    if st.session_state.get("api_ship_name_select", "") not in vessel_select_options:
+        st.session_state.api_ship_name_select = ""
     selected_api_vessel = st.selectbox(
         "Vessel to load",
-        options=[""] + vessel_options_before_load,
-        index=vessel_index,
+        options=vessel_select_options,
+        key="api_ship_name_select",
     )
-    custom_api_vessel = st.text_input(
-        "Other vessel name",
-        value="",
-        placeholder="Type exact vessel name",
+    api_ship_name = selected_api_vessel.strip()
+
+    load_fetch = st.button(
+        "Load dashboard data",
+        type="primary",
+        use_container_width=True,
+        disabled=not bool(api_ship_name),
     )
-    api_ship_name = custom_api_vessel.strip() or selected_api_vessel.strip()
-
-    load_fetch = st.button("Load dashboard data", type="primary", use_container_width=True)
-    refresh_fetch = st.button("Reload selected data", use_container_width=True)
-
-if end_date_input < start_date_input:
-    st.warning("End date must be on or after start date.")
-    st.stop()
+    refresh_fetch = st.button(
+        "Reload selected data",
+        use_container_width=True,
+        disabled=not bool(api_ship_name),
+    )
 
 active_request = {
     "start_date": start_date_input.isoformat(),
@@ -1999,7 +2080,7 @@ active_request = {
 
 if load_fetch or refresh_fetch:
     if not api_ship_name:
-        st.warning("Select or type a vessel before loading dashboard data.")
+        st.warning("Select a vessel before loading dashboard data.")
         st.stop()
     st.session_state.active_api_request = active_request
 
@@ -2023,15 +2104,6 @@ parameter_sets = build_parameter_sets(
     DATE_LITERAL_FORMATS[date_format_label],
     api_ship_name,
 )
-
-if not username or not password:
-    st.error(
-        "Marorka API credentials are not configured. Add MARORKA_USERNAME and "
-        "MARORKA_PASSWORD in Streamlit secrets."
-    )
-    st.stop()
-
-auth_signature = sha256(f"{username}:{password}".encode("utf-8")).hexdigest()
 
 try:
     with st.spinner("Loading dashboard data from Marorka..."):
