@@ -24,7 +24,7 @@ from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 # Configuration
 # =============================================================================
 
-APP_TITLE = "Magic Noon alla Mantalos"
+APP_TITLE = "Magic Noon - Holly Trinity"
 APP_DIR = Path(__file__).resolve().parent
 DEFAULT_BACKGROUND_IMAGE = APP_DIR / "mantalos-nikolic-960x540.webp"
 ODATA_ENDPOINT = "https://online.marorka.com/Odata/v1/ODataService.svc/ReportData"
@@ -490,7 +490,7 @@ def render_header(selected_group: str, selected_vessels: list[str], start_date: 
         f"""
         <div class="dashboard-hero">
             <div class="eyebrow">Marorka performance monitoring</div>
-            <h1 class="dashboard-title">Magic Noon alla Mantalos</h1>
+            <h1 class="dashboard-title">Magic Noon - Holly Trinity</h1>
             <div class="dashboard-subtitle">
                 {escape(selected_group)} | {escape(vessel_text)} | {start_date.strftime('%d/%m/%Y')} to {end_date.strftime('%d/%m/%Y')} | live API snapshot
             </div>
@@ -530,7 +530,7 @@ def require_dashboard_password() -> None:
         """
         <div class="dashboard-hero">
             <div class="eyebrow">Secure access</div>
-            <h1 class="dashboard-title">Magic Noon alla Mantalos</h1>
+            <h1 class="dashboard-title">Magic Noon - Holly Trinity</h1>
             <div class="dashboard-subtitle">Enter your dashboard password to continue.</div>
         </div>
         """,
