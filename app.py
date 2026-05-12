@@ -186,7 +186,9 @@ st.set_page_config(page_title=APP_TITLE, layout="wide")
 
 
 def apply_custom_css() -> None:
-    background_image_layer = dashboard_background_image_layer()
+    background_image_url = dashboard_background_image_url()
+    background_image_layer = dashboard_background_image_layer(background_image_url)
+    hero_background = dashboard_hero_background(has_background_image=bool(background_image_url))
     st.markdown(
         """
         <style>
@@ -211,6 +213,21 @@ def apply_custom_css() -> None:
             background-position: center center;
             background-size: cover;
             background-attachment: fixed;
+        }
+
+        header[data-testid="stHeader"] {
+            background: rgba(5, 5, 5, 0.86) !important;
+            border-bottom: 1px solid rgba(245, 200, 75, 0.16) !important;
+            backdrop-filter: blur(18px);
+        }
+
+        div[data-testid="stToolbar"] {
+            background: transparent !important;
+        }
+
+        div[data-testid="stDecoration"] {
+            background: linear-gradient(90deg, rgba(255, 216, 74, 0.72), rgba(255, 176, 0, 0.28)) !important;
+            height: 2px !important;
         }
 
         .block-container {
@@ -267,10 +284,9 @@ def apply_custom_css() -> None:
             padding: 1.8rem 2rem;
             border: 1px solid var(--border);
             border-radius: 24px;
-            background:
-                linear-gradient(135deg, rgba(20, 18, 10, 0.98), rgba(5, 5, 5, 0.82)),
-                linear-gradient(90deg, rgba(255, 216, 74, 0.12), transparent);
-            box-shadow: 0 24px 70px rgba(0,0,0,0.46), inset 0 1px 0 rgba(255,216,74,0.18);
+            background: __HERO_BACKGROUND__;
+            box-shadow: 0 24px 70px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,216,74,0.18);
+            backdrop-filter: blur(12px);
             margin-bottom: 1.4rem;
         }
 
@@ -356,13 +372,14 @@ def apply_custom_css() -> None:
             font-weight: 850 !important;
         }
         </style>
-        """.replace("__BACKGROUND_IMAGE_LAYER__", background_image_layer),
+        """
+        .replace("__BACKGROUND_IMAGE_LAYER__", background_image_layer)
+        .replace("__HERO_BACKGROUND__", hero_background),
         unsafe_allow_html=True,
     )
 
 
-def dashboard_background_image_layer() -> str:
-    image_url = dashboard_background_image_url()
+def dashboard_background_image_layer(image_url: str) -> str:
     if not image_url:
         return ""
 
@@ -370,6 +387,19 @@ def dashboard_background_image_layer() -> str:
     return (
         "linear-gradient(rgba(5, 5, 5, 0.78), rgba(5, 5, 5, 0.88)),\n"
         f"                url('{safe_url}'),\n"
+    )
+
+
+def dashboard_hero_background(*, has_background_image: bool) -> str:
+    if has_background_image:
+        return (
+            "linear-gradient(135deg, rgba(20, 18, 10, 0.68), rgba(5, 5, 5, 0.48)), "
+            "linear-gradient(90deg, rgba(255, 216, 74, 0.10), transparent)"
+        )
+
+    return (
+        "linear-gradient(135deg, rgba(20, 18, 10, 0.98), rgba(5, 5, 5, 0.82)), "
+        "linear-gradient(90deg, rgba(255, 216, 74, 0.12), transparent)"
     )
 
 
