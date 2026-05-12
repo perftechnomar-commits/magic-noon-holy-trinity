@@ -189,6 +189,8 @@ def apply_custom_css() -> None:
     background_image_url = dashboard_background_image_url()
     background_image_layer = dashboard_background_image_layer(background_image_url)
     hero_background = dashboard_hero_background(has_background_image=bool(background_image_url))
+    hero_backdrop_filter = dashboard_hero_backdrop_filter(has_background_image=bool(background_image_url))
+    hero_box_shadow = dashboard_hero_box_shadow(has_background_image=bool(background_image_url))
     st.markdown(
         """
         <style>
@@ -305,8 +307,8 @@ def apply_custom_css() -> None:
             border: 1px solid var(--border);
             border-radius: 24px;
             background: __HERO_BACKGROUND__;
-            box-shadow: 0 24px 70px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,216,74,0.18);
-            backdrop-filter: blur(12px);
+            box-shadow: __HERO_BOX_SHADOW__;
+            backdrop-filter: __HERO_BACKDROP_FILTER__;
             margin-bottom: 1.4rem;
         }
 
@@ -325,12 +327,14 @@ def apply_custom_css() -> None:
             font-weight: 900;
             color: #FFFBEA;
             margin: 0;
+            text-shadow: 0 3px 16px rgba(0,0,0,0.88);
         }
 
         .dashboard-subtitle {
             color: var(--text-soft);
             font-size: 1rem;
             margin-top: 0.8rem;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.82);
         }
 
         .section-title {
@@ -394,7 +398,9 @@ def apply_custom_css() -> None:
         </style>
         """
         .replace("__BACKGROUND_IMAGE_LAYER__", background_image_layer)
-        .replace("__HERO_BACKGROUND__", hero_background),
+        .replace("__HERO_BACKGROUND__", hero_background)
+        .replace("__HERO_BACKDROP_FILTER__", hero_backdrop_filter)
+        .replace("__HERO_BOX_SHADOW__", hero_box_shadow),
         unsafe_allow_html=True,
     )
 
@@ -412,15 +418,23 @@ def dashboard_background_image_layer(image_url: str) -> str:
 
 def dashboard_hero_background(*, has_background_image: bool) -> str:
     if has_background_image:
-        return (
-            "linear-gradient(135deg, rgba(18, 16, 8, 0.50), rgba(5, 5, 5, 0.30)), "
-            "linear-gradient(90deg, rgba(255, 216, 74, 0.08), transparent)"
-        )
+        return "transparent"
 
     return (
         "linear-gradient(135deg, rgba(20, 18, 10, 0.98), rgba(5, 5, 5, 0.82)), "
         "linear-gradient(90deg, rgba(255, 216, 74, 0.12), transparent)"
     )
+
+
+def dashboard_hero_backdrop_filter(*, has_background_image: bool) -> str:
+    return "none" if has_background_image else "blur(12px)"
+
+
+def dashboard_hero_box_shadow(*, has_background_image: bool) -> str:
+    if has_background_image:
+        return "inset 0 1px 0 rgba(255,216,74,0.20)"
+
+    return "0 24px 70px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,216,74,0.18)"
 
 
 def dashboard_background_image_url() -> str:
