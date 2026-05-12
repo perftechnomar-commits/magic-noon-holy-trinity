@@ -52,6 +52,10 @@ VALUE_ALIASES = {
     "Distance Over Ground [nm]": [
         "Distance Over Ground [nm]",
     ],
+    "Steaming Time Since Last Report [hh:mm]": [
+        "Steaming Time Since Last Report [hh:mm]",
+        "Steaming Time Since Last Report",
+    ],
     "ME Load [%MCR]": [
         "ME Load [%MCR]",
         "ME Load [% MCR]",
@@ -103,6 +107,7 @@ DISPLAY_COLUMNS = [
     "StartDateTimeGMT",
     "EndDateTimeGMT",
     "LapTime",
+    "Steaming Time Since Last Report [hh:mm]",
     "StateName",
     "Engine Distance [nm]",
     "Distance Over Ground [nm]",
@@ -754,20 +759,6 @@ def render_kpis(performance_df: pd.DataFrame, boiler_df: pd.DataFrame) -> None:
     cols[2].metric("Average SFOC [gr/Kwh]", format_value(sfoc, 2))
     cols[3].metric("Boiler Sum", format_value(boiler, 2))
 
-    context = st.columns(4)
-    context[0].metric(
-        "Performance KPI reports",
-        f"{performance_df['ReportId'].nunique():,}" if "ReportId" in performance_df else f"{len(performance_df):,}",
-    )
-    context[1].metric(
-        "Performance KPI vessels",
-        f"{performance_df['ShipName'].nunique():,}" if "ShipName" in performance_df else "-",
-    )
-    context[2].metric(
-        "Boiler KPI reports",
-        f"{boiler_df['ReportId'].nunique():,}" if "ReportId" in boiler_df else f"{len(boiler_df):,}",
-    )
-    context[3].metric("Latest GMT", format_datetime(latest_value))
 
 
 def latest_by_vessel(df: pd.DataFrame) -> pd.DataFrame:
