@@ -239,20 +239,38 @@ def apply_custom_css() -> None:
             height: 0 !important;
         }
 
-        div[data-testid="stAlert"] {
+        div[data-testid="stAlert"],
+        div[data-testid="stAlert"] > div,
+        div[data-testid="stAlert"] [role="alert"],
+        div[data-testid="stAlertContentInfo"],
+        div[data-testid="stAlertContentWarning"],
+        div[data-testid="stAlertContentError"],
+        div[data-testid="stAlertContentSuccess"] {
             background: transparent !important;
+            background-color: transparent !important;
+            background-image: none !important;
             border: 0 !important;
             border-radius: 0 !important;
             box-shadow: none !important;
             color: #FFFBEA !important;
             backdrop-filter: none;
+        }
+
+        div[data-testid="stAlert"] {
             padding-left: 0 !important;
             padding-right: 0 !important;
         }
 
+        div[data-testid="stAlert"] * {
+            background: transparent !important;
+            background-color: transparent !important;
+            background-image: none !important;
+            border: 0 !important;
+            box-shadow: none !important;
+        }
+
         div[data-testid="stAlert"] svg {
-            color: #FFD84A !important;
-            fill: #FFD84A !important;
+            display: none !important;
         }
 
         div[data-testid="stAlert"] div,
