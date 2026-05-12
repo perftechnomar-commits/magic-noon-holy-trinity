@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import base64
 from datetime import date, datetime, timedelta, timezone
 from hashlib import sha256
 from html import escape
 from io import BytesIO
 import hmac
+import mimetypes
 import os
 import re
 import time
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode, urljoin
 
@@ -22,6 +25,8 @@ from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 # =============================================================================
 
 APP_TITLE = "Magic Noon alla Mantalos"
+APP_DIR = Path(__file__).resolve().parent
+DEFAULT_BACKGROUND_IMAGE = APP_DIR / "assets" / "background.jpg"
 ODATA_ENDPOINT = "https://online.marorka.com/Odata/v1/ODataService.svc/ReportData"
 MAX_ODATA_PAGES = 250
 API_CACHE_TTL_SECONDS = 21600  # 6 hours; KPI filters use local data and do not refetch.
@@ -181,6 +186,7 @@ st.set_page_config(page_title=APP_TITLE, layout="wide")
 
 
 def apply_custom_css() -> None:
+    background_image_layer = dashboard_background_image_layer()
     st.markdown(
         """
         <style>
@@ -197,10 +203,14 @@ def apply_custom_css() -> None:
 
         .stApp {
             background:
+                __BACKGROUND_IMAGE_LAYER__
                 radial-gradient(circle at top left, rgba(255, 216, 74, 0.13), transparent 34rem),
                 radial-gradient(circle at top right, rgba(255, 176, 0, 0.10), transparent 30rem),
                 linear-gradient(180deg, rgba(255, 216, 74, 0.04), transparent 22rem),
                 var(--bg);
+            background-position: center center;
+            background-size: cover;
+            background-attachment: fixed;
         }
 
         .block-container {
@@ -346,9 +356,38 @@ def apply_custom_css() -> None:
             font-weight: 850 !important;
         }
         </style>
-        """,
+        """.replace("__BACKGROUND_IMAGE_LAYER__", background_image_layer),
         unsafe_allow_html=True,
     )
+
+
+def dashboard_background_image_layer() -> str:
+    image_url = dashboard_background_image_url()
+    if not image_url:
+        return ""
+
+    safe_url = image_url.replace("\\", "\\\\").replace("'", "\\'")
+    return (
+        "linear-gradient(rgba(5, 5, 5, 0.78), rgba(5, 5, 5, 0.88)),\n"
+        f"                url('{safe_url}'),\n"
+    )
+
+
+def dashboard_background_image_url() -> str:
+    source = read_secret("DASHBOARD_BACKGROUND_IMAGE")
+    if source and re.match(r"^(https?://|data:)", source, flags=re.IGNORECASE):
+        return source
+
+    image_path = Path(source).expanduser() if source else DEFAULT_BACKGROUND_IMAGE
+    if not image_path.is_absolute():
+        image_path = APP_DIR / image_path
+
+    if not image_path.is_file():
+        return ""
+
+    mime_type = mimetypes.guess_type(image_path.name)[0] or "image/png"
+    encoded_image = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    return f"data:{mime_type};base64,{encoded_image}"
 
 
 def render_header(selected_group: str, selected_vessels: list[str], start_date: date, end_date: date) -> None:
