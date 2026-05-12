@@ -185,20 +185,21 @@ def apply_custom_css() -> None:
         """
         <style>
         :root {
-            --bg: #0B1018;
-            --panel: #111827;
-            --panel-soft: #162033;
-            --border: rgba(148, 163, 184, 0.20);
-            --text-soft: #9CA3AF;
-            --cyan: #00D1FF;
-            --green: #00FFA3;
+            --bg: #050505;
+            --panel: #10100C;
+            --panel-soft: #19170F;
+            --border: rgba(245, 200, 75, 0.24);
+            --text-soft: #B8B29F;
+            --cyan: #FFD84A;
+            --green: #FFB000;
             --red-muted: rgba(207, 95, 95, 0.24);
         }
 
         .stApp {
             background:
-                radial-gradient(circle at top left, rgba(0, 209, 255, 0.14), transparent 34rem),
-                radial-gradient(circle at top right, rgba(0, 255, 163, 0.09), transparent 30rem),
+                radial-gradient(circle at top left, rgba(255, 216, 74, 0.13), transparent 34rem),
+                radial-gradient(circle at top right, rgba(255, 176, 0, 0.10), transparent 30rem),
+                linear-gradient(180deg, rgba(255, 216, 74, 0.04), transparent 22rem),
                 var(--bg);
         }
 
@@ -209,7 +210,7 @@ def apply_custom_css() -> None:
         }
 
         section[data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #101827 0%, #0B1018 100%);
+            background: linear-gradient(180deg, #11100A 0%, #050505 100%);
             border-right: 1px solid var(--border);
         }
 
@@ -230,7 +231,7 @@ def apply_custom_css() -> None:
         }
 
         section[data-testid="stSidebar"] label {
-            color: #E5E7EB !important;
+            color: #F5EFD8 !important;
             font-weight: 700 !important;
         }
 
@@ -238,26 +239,28 @@ def apply_custom_css() -> None:
         div[data-baseweb="input"] > div,
         [data-testid="stTextInput"] input,
         [data-testid="stDateInput"] input {
-            background-color: #0F172A !important;
-            border: 1px solid rgba(0, 209, 255, 0.22) !important;
+            background-color: #0D0D09 !important;
+            border: 1px solid rgba(255, 216, 74, 0.28) !important;
             border-radius: 14px !important;
         }
 
         [data-baseweb="tag"] {
-            background: linear-gradient(135deg, rgba(0, 209, 255, 0.22), rgba(0, 255, 163, 0.16)) !important;
-            border: 1px solid rgba(0, 209, 255, 0.35) !important;
-            color: #DFF9FF !important;
+            background: linear-gradient(135deg, rgba(255, 216, 74, 0.22), rgba(255, 176, 0, 0.14)) !important;
+            border: 1px solid rgba(255, 216, 74, 0.38) !important;
+            color: #FFF7CC !important;
             border-radius: 999px !important;
         }
-        [data-baseweb="tag"] span { color: #DFF9FF !important; }
-        [data-baseweb="tag"] svg { color: #DFF9FF !important; }
+        [data-baseweb="tag"] span { color: #FFF7CC !important; }
+        [data-baseweb="tag"] svg { color: #FFF7CC !important; }
 
         .dashboard-hero {
             padding: 1.8rem 2rem;
             border: 1px solid var(--border);
             border-radius: 24px;
-            background: linear-gradient(135deg, rgba(17, 24, 39, 0.96), rgba(15, 23, 42, 0.78));
-            box-shadow: 0 24px 70px rgba(0,0,0,0.36);
+            background:
+                linear-gradient(135deg, rgba(20, 18, 10, 0.98), rgba(5, 5, 5, 0.82)),
+                linear-gradient(90deg, rgba(255, 216, 74, 0.12), transparent);
+            box-shadow: 0 24px 70px rgba(0,0,0,0.46), inset 0 1px 0 rgba(255,216,74,0.18);
             margin-bottom: 1.4rem;
         }
 
@@ -274,7 +277,7 @@ def apply_custom_css() -> None:
             font-size: clamp(2.2rem, 4vw, 4rem);
             line-height: 1.02;
             font-weight: 900;
-            color: #F8FAFC;
+            color: #FFFBEA;
             margin: 0;
         }
 
@@ -287,27 +290,27 @@ def apply_custom_css() -> None:
         .section-title {
             font-size: 1.35rem;
             font-weight: 850;
-            color: #F8FAFC;
+            color: #FFFBEA;
             margin: 1.6rem 0 0.75rem 0;
         }
 
         div[data-testid="stMetric"] {
-            background: linear-gradient(180deg, rgba(22, 32, 51, 0.98), rgba(17, 24, 39, 0.98));
+            background: linear-gradient(180deg, rgba(25, 23, 15, 0.98), rgba(12, 12, 8, 0.98));
             border: 1px solid var(--border);
             border-radius: 20px;
             padding: 1.05rem 1.1rem;
-            box-shadow: 0 14px 34px rgba(0,0,0,0.28);
+            box-shadow: 0 14px 34px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,216,74,0.10);
             min-height: 124px;
         }
 
         div[data-testid="stMetricLabel"] p {
-            color: #AEB8C7 !important;
+            color: #CFC6A5 !important;
             font-weight: 750 !important;
             font-size: 0.88rem !important;
         }
 
         div[data-testid="stMetricValue"] {
-            color: #F8FAFC !important;
+            color: #FFFBEA !important;
             font-size: clamp(1.25rem, 1.8vw, 1.8rem) !important;
             line-height: 1.12 !important;
             font-weight: 850 !important;
@@ -319,14 +322,27 @@ def apply_custom_css() -> None:
             border: 1px solid var(--border);
             border-radius: 18px;
             overflow: hidden;
-            box-shadow: 0 14px 36px rgba(0,0,0,0.24);
+            box-shadow: 0 14px 36px rgba(0,0,0,0.30);
+        }
+
+        button[data-baseweb="tab"] {
+            color: #CFC6A5 !important;
+            font-weight: 750 !important;
+        }
+
+        button[data-baseweb="tab"][aria-selected="true"] {
+            color: #FFD84A !important;
+        }
+
+        div[data-baseweb="tab-highlight"] {
+            background-color: #FFD84A !important;
         }
 
         .stDownloadButton button, .stButton button {
             border-radius: 14px !important;
-            border: 1px solid rgba(0, 209, 255, 0.35) !important;
-            background: linear-gradient(135deg, rgba(0, 209, 255, 0.95), rgba(0, 255, 163, 0.80)) !important;
-            color: #061018 !important;
+            border: 1px solid rgba(255, 216, 74, 0.45) !important;
+            background: linear-gradient(135deg, rgba(255, 216, 74, 0.98), rgba(255, 176, 0, 0.86)) !important;
+            color: #121008 !important;
             font-weight: 850 !important;
         }
         </style>
@@ -1331,13 +1347,9 @@ def main() -> None:
     performance_kpi_df = apply_excel_like_filters(df, performance_filter_specs)
     boiler_kpi_df = apply_excel_like_filters(df, boiler_filter_specs)
 
-    selected_view = st.radio(
-        "View",
-        options=["Dashboard", "Data Export", "Diagnostics"],
-        horizontal=True,
-    )
+    tab_dashboard, tab_diagnostics, tab_data = st.tabs(["Dashboard", "API Diagnostics", "Dataset"])
 
-    if selected_view == "Dashboard":
+    with tab_dashboard:
         st.markdown('<div class="section-title">Fleet KPIs</div>', unsafe_allow_html=True)
         render_kpis(performance_kpi_df, boiler_kpi_df)
         if len(performance_kpi_df) != len(df) or len(boiler_kpi_df) != len(df):
@@ -1353,32 +1365,7 @@ def main() -> None:
         display_df = make_display_dataframe(df.sort_values("EndDateTimeGMT", ascending=False))
         st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-    elif selected_view == "Data Export":
-        export_df = df.sort_values(["ShipName", "EndDateTimeGMT"], ascending=[True, False])
-        export_ready = (
-            st.session_state.get("fleet_export_signature") == transform_sig
-            and "fleet_export_bytes" in st.session_state
-        )
-
-        if st.button("Prepare Excel download", type="primary"):
-            with st.spinner("Preparing Excel file..."):
-                st.session_state["fleet_export_bytes"] = to_excel_bytes(export_df)
-                st.session_state["fleet_export_signature"] = transform_sig
-            export_ready = True
-
-        if export_ready:
-            st.download_button(
-                "Download fleet performance Excel",
-                data=st.session_state["fleet_export_bytes"],
-                file_name="fleet_performance_report.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
-        else:
-            st.caption("Excel generation is prepared on demand so normal dashboard loads stay faster.")
-
-        st.dataframe(make_display_dataframe(export_df), use_container_width=True, hide_index=True)
-
-    else:
+    with tab_diagnostics:
         st.markdown('<div class="section-title">Diagnostics</div>', unsafe_allow_html=True)
         diagnostics = pd.DataFrame(
             {
@@ -1422,6 +1409,31 @@ def main() -> None:
             st.dataframe(value_counts.head(200), use_container_width=True, hide_index=True)
         else:
             st.caption("Raw value counts are calculated on demand so diagnostics do not slow normal loads.")
+
+    with tab_data:
+        export_df = df.sort_values(["ShipName", "EndDateTimeGMT"], ascending=[True, False])
+        export_ready = (
+            st.session_state.get("fleet_export_signature") == transform_sig
+            and "fleet_export_bytes" in st.session_state
+        )
+
+        if st.button("Prepare Excel download", type="primary"):
+            with st.spinner("Preparing Excel file..."):
+                st.session_state["fleet_export_bytes"] = to_excel_bytes(export_df)
+                st.session_state["fleet_export_signature"] = transform_sig
+            export_ready = True
+
+        if export_ready:
+            st.download_button(
+                "Download fleet performance Excel",
+                data=st.session_state["fleet_export_bytes"],
+                file_name="fleet_performance_report.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        else:
+            st.caption("Excel generation is prepared on demand so normal dashboard loads stay faster.")
+
+        st.dataframe(make_display_dataframe(export_df), use_container_width=True, hide_index=True)
 
 
 if __name__ == "__main__":
