@@ -174,14 +174,10 @@ def apply_custom_css() -> None:
         section[data-testid="stSidebar"] {
             background: linear-gradient(180deg, #101827 0%, #0B1018 100%);
             border-right: 1px solid var(--border);
-            overflow-y: auto !important;
         }
 
         section[data-testid="stSidebar"] > div {
-            height: 100vh !important;
-            max-height: 100vh !important;
-            overflow-y: auto !important;
-            padding-bottom: 7rem !important;
+            padding-bottom: 8rem !important;
         }
 
         section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
@@ -189,8 +185,7 @@ def apply_custom_css() -> None:
         }
 
         section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
-            max-height: 8.5rem;
-            overflow-y: auto !important;
+            overflow: visible !important;
         }
 
         section[data-testid="stSidebar"] [data-testid="stExpander"] {
