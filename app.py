@@ -376,65 +376,6 @@ def apply_custom_css() -> None:
             margin: 1.6rem 0 0.75rem 0;
         }
 
-        .kpi-grid {
-            display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 1rem;
-            margin: 0.5rem 0 1rem 0;
-        }
-
-        .kpi-card {
-            position: relative;
-            min-height: 118px;
-            padding: 1.15rem 1.1rem;
-            border: 1px solid rgba(255, 216, 74, 0.56);
-            border-radius: 20px;
-            background: __KPI_BACKGROUND__;
-            box-shadow: __KPI_BOX_SHADOW__;
-            backdrop-filter: __KPI_BACKDROP_FILTER__;
-            overflow: hidden;
-        }
-
-        .kpi-card::before {
-            content: "";
-            position: absolute;
-            top: 0;
-            left: 1rem;
-            right: 1rem;
-            height: 2px;
-            background: linear-gradient(90deg, rgba(255,216,74,0), rgba(255,216,74,0.92), rgba(255,176,0,0));
-        }
-
-        .kpi-label {
-            color: #F5EFD8;
-            font-size: 0.82rem;
-            font-weight: 800;
-            line-height: 1.25;
-            text-shadow: 0 2px 12px rgba(0,0,0,0.96), 0 0 18px rgba(0,0,0,0.70);
-        }
-
-        .kpi-value {
-            color: #FFFBEA;
-            font-size: clamp(1.85rem, 2.2vw, 2.45rem);
-            line-height: 1;
-            font-weight: 950;
-            letter-spacing: 0;
-            margin-top: 0.65rem;
-            text-shadow: 0 3px 18px rgba(0,0,0,0.98), 0 0 22px rgba(0,0,0,0.78);
-        }
-
-        @media (max-width: 900px) {
-            .kpi-grid {
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-            }
-        }
-
-        @media (max-width: 640px) {
-            .kpi-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
         div[data-testid="stMetric"] {
             position: relative;
             background: __KPI_BACKGROUND__ !important;
