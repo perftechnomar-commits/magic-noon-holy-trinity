@@ -324,6 +324,48 @@ def apply_custom_css() -> None:
             border-radius: 14px !important;
         }
 
+                [data-testid="stDateInput"] div[data-baseweb="input"]:focus-within,
+        [data-testid="stDateInput"] div[data-baseweb="input"]:focus-within > div,
+        [data-testid="stDateInput"] div[data-baseweb="input"]:has(input:focus),
+        [data-testid="stDateInput"] div[data-baseweb="input"]:has(input:focus) > div,
+        [data-testid="stDateInput"] input:focus {
+            border-color: rgba(255, 216, 74, 0.72) !important;
+            box-shadow: 0 0 0 1px rgba(255, 216, 74, 0.72) !important;
+            outline-color: rgba(255, 216, 74, 0.72) !important;
+        }
+
+        div[data-baseweb="calendar"] {
+            --primary-color: #FFD84A;
+            --primary-color-rgb: 255, 216, 74;
+        }
+
+        div[data-baseweb="calendar"] [aria-selected="true"],
+        div[data-baseweb="calendar"] button[aria-selected="true"],
+        div[data-baseweb="calendar"] div[role="gridcell"][aria-selected="true"],
+        div[data-baseweb="calendar"] [aria-label^="Selected"] {
+            background-color: #FFD84A !important;
+            border-color: #FFD84A !important;
+            color: #121008 !important;
+        }
+
+        div[data-baseweb="calendar"] [aria-selected="true"] *,
+        div[data-baseweb="calendar"] button[aria-selected="true"] *,
+        div[data-baseweb="calendar"] [aria-label^="Selected"] * {
+            color: #121008 !important;
+        }
+
+        div[data-baseweb="calendar"] button:focus,
+        div[data-baseweb="calendar"] button:focus-visible,
+        div[data-baseweb="calendar"] [role="button"]:focus,
+        div[data-baseweb="calendar"] [role="button"]:focus-visible,
+        div[data-baseweb="calendar"] [role="gridcell"]:focus,
+        div[data-baseweb="calendar"] [role="gridcell"]:focus-visible {
+            border-color: rgba(255, 216, 74, 0.72) !important;
+            box-shadow: 0 0 0 2px rgba(255, 216, 74, 0.24) !important;
+            outline: 2px solid rgba(255, 216, 74, 0.72) !important;
+            outline-offset: 2px !important;
+        }
+
         [data-baseweb="tag"] {
             background: linear-gradient(135deg, rgba(255, 216, 74, 0.22), rgba(255, 176, 0, 0.14)) !important;
             border: 1px solid rgba(255, 216, 74, 0.38) !important;
