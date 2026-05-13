@@ -431,33 +431,17 @@ def apply_custom_css() -> None:
             color: #121008 !important;
             font-weight: 850 !important;
         }
-        div[data-testid="stSlider"] *[style*="rgb(255, 75, 75)"],
-        div[data-testid="stSlider"] *[style*="#ff4b4b"],
-        div[data-testid="stSlider"] *[style*="255, 75, 75"] {
-            background: #FFD84A !important;
-            background-color: #FFD84A !important;
-            color: #FFD84A !important;
-            border-color: #FFD84A !important;
+        div[data-testid="stSlider"] [data-baseweb="slider"] {
+            background: transparent !important;
         }
-        div[data-testid="stSlider"] *[style*="rgb(49, 51, 63)"],
-        div[data-testid="stSlider"] *[style*="rgb(38, 39, 48)"],
-        div[data-testid="stSlider"] *[style*="#31333f"],
-        div[data-testid="stSlider"] *[style*="#262730"] {
-            background: #050505 !important;
-            background-color: #050505 !important;
-        }
-        div[data-testid="stSlider"] [role="slider"],
-        div[data-testid="stSlider"] [role="slider"] *,
-        div[data-testid="stSlider"] [role="slider"]::before,
-        div[data-testid="stSlider"] [role="slider"]::after {
-            background: #FFD84A !important;
-            background-color: #FFD84A !important;
-            border-color: #121008 !important;
+
+        div[data-testid="stSlider"] [role="slider"] {
             box-shadow: none !important;
             outline: none !important;
         }
-        div[data-testid="stSlider"] label,
+
         div[data-testid="stSlider"] p,
+        div[data-testid="stSlider"] label,
         div[data-testid="stSlider"] span {
             color: #FFD84A !important;
             font-weight: 800 !important;
