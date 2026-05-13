@@ -331,30 +331,26 @@ def apply_custom_css() -> None:
             outline: none !important;
         }
 
-        div[data-baseweb="calendar"] button,
-        div[data-baseweb="calendar"] [role="button"] {
-            border-radius: 999px !important;
-            box-shadow: none !important;
-            outline: none !important;
-        }
-
-        div[data-baseweb="calendar"] button[aria-selected="true"],
-        div[data-baseweb="calendar"] [role="button"][aria-selected="true"],
-        div[data-baseweb="calendar"] button[aria-current="date"],
-        div[data-baseweb="calendar"] [role="button"][aria-current="date"] {
+        div[data-baseweb="calendar"] [aria-selected="true"],
+        div[data-baseweb="calendar"] [aria-selected="true"] *,
+        div[data-baseweb="calendar"] [aria-current="date"],
+        div[data-baseweb="calendar"] [aria-current="date"] *,
+        div[data-baseweb="calendar"] [aria-label*="Selected"],
+        div[data-baseweb="calendar"] [aria-label*="Selected"] *,
+        div[data-baseweb="calendar"] [aria-label*="31"],
+        div[data-baseweb="calendar"] [aria-label*="31"] * {
             background: #FFD84A !important;
             background-color: #FFD84A !important;
             color: #121008 !important;
-            border: 0 !important;
+            border-color: #FFD84A !important;
             box-shadow: none !important;
             outline: none !important;
         }
 
-        div[data-baseweb="calendar"] button[aria-selected="true"] *,
-        div[data-baseweb="calendar"] [role="button"][aria-selected="true"] *,
-        div[data-baseweb="calendar"] button[aria-current="date"] *,
-        div[data-baseweb="calendar"] [role="button"][aria-current="date"] * {
-            color: #121008 !important;
+        div[data-baseweb="calendar"] [aria-selected="true"],
+        div[data-baseweb="calendar"] [aria-current="date"],
+        div[data-baseweb="calendar"] [aria-label*="Selected"] {
+            border-radius: 999px !important;
         }
 
         div[data-baseweb="calendar"] button:focus,
