@@ -324,41 +324,18 @@ def apply_custom_css() -> None:
             border-radius: 14px !important;
         }
 
-        /* Date input focus */
-        [data-testid="stDateInput"] div[data-baseweb="input"]:focus-within {
+        [data-testid="stDateInput"] div[data-baseweb="input"]:focus-within,
+        [data-testid="stDateInput"] input:focus {
             border-color: #FFD84A !important;
             box-shadow: none !important;
             outline: none !important;
         }
 
-        /* Selected day circle */
-        div[data-baseweb="calendar"] button[aria-selected="true"] {
-            background: transparent !important;
-            box-shadow: none !important;
-            outline: none !important;
-        }
-
-        /* Inner selected element */
-        div[data-baseweb="calendar"] button[aria-selected="true"] > div,
-        div[data-baseweb="calendar"] button[aria-selected="true"] span,
-        div[data-baseweb="calendar"] button[aria-selected="true"] div {
-            background: #FFD84A !important;
-            background-color: #FFD84A !important;
-            color: #121008 !important;
+        [data-baseweb="tag"] {
+            background: linear-gradient(135deg, rgba(255, 216, 74, 0.22), rgba(255, 176, 0, 0.14)) !important;
+            border: 1px solid rgba(255, 216, 74, 0.38) !important;
+            color: #FFF7CC !important;
             border-radius: 999px !important;
-            border: none !important;
-            box-shadow: none !important;
-            outline: none !important;
-        }
-
-        /* Remove all orange hover/focus states */
-        div[data-baseweb="calendar"] button:hover,
-        div[data-baseweb="calendar"] button:focus,
-        div[data-baseweb="calendar"] button:focus-visible,
-        div[data-baseweb="calendar"] button *:hover,
-        div[data-baseweb="calendar"] button *:focus {
-            box-shadow: none !important;
-            outline: none !important;
         }
         [data-baseweb="tag"] span { color: #FFF7CC !important; }
         [data-baseweb="tag"] svg { color: #FFF7CC !important; }
