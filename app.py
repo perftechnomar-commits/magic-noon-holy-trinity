@@ -1742,7 +1742,7 @@ def main() -> None:
     if needs_raw_load:
         if not refresh:
             st.info(
-                "Click **Load / Refresh API data** to pull Marorka data for the selected start date. "
+                "Click **Load / Refresh API data** to pull Marorka data. "
                 "KPI filter changes will use the loaded data locally and will not call the API."
             )
             st.stop()
