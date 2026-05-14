@@ -24,7 +24,7 @@ from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 # Configuration
 # =============================================================================
 
-APP_TITLE = "Magic Noon - Holly Trinity"
+APP_TITLE = "Magic Noon - Holy Trinity"
 APP_DIR = Path(__file__).resolve().parent
 DEFAULT_BACKGROUND_IMAGE = APP_DIR / "mantalos-nikolic-960x540.webp"
 ODATA_ENDPOINT = "https://online.marorka.com/Odata/v1/ODataService.svc/ReportData"
@@ -32,6 +32,8 @@ MAX_ODATA_PAGES = 250
 API_CACHE_TTL_SECONDS = 21600  # 6 hours; KPI filters use local data and do not refetch.
 UI_DATE_INPUT_FORMAT = "DD/MM/YYYY"
 DISPLAY_DATETIME_FORMAT = "%d/%m/%Y %H:%M"
+API_FULL_START_DATE = date(2026, 1, 1)
+
 
 EXCLUDED_REPORT_TYPES = [
     "Intake Report",
@@ -323,7 +325,7 @@ def apply_custom_css() -> None:
             border: 1px solid rgba(255, 216, 74, 0.28) !important;
             border-radius: 14px !important;
         }
-
+        
         div[data-baseweb="select"] > div:focus-within,
         div[data-baseweb="input"] > div:focus-within,
         div[data-baseweb="input"] > div[data-focusvisible="true"],
@@ -346,76 +348,14 @@ def apply_custom_css() -> None:
                 0 0 0 1px rgba(255, 216, 74, 0.92),
                 0 0 0 4px rgba(255, 216, 74, 0.12) !important;
         }
-
-
-        /* Remove remaining Streamlit/BaseWeb browser validation accent rings.
-           Some password/date inputs keep a second warning-colored outline on the
-           wrapper even after the normal input focus styles are overridden. */
-        div[data-baseweb="input"],
-        div[data-baseweb="input"] *,
-        [data-testid="stTextInput"],
-        [data-testid="stTextInput"] *,
-        [data-testid="stDateInput"],
-        [data-testid="stDateInput"] * {
-            --focus-color: #FFD84A !important;
-            --input-border-color: rgba(255, 216, 74, 0.92) !important;
-            --error-color: #FFD84A !important;
-            outline-color: #FFD84A !important;
-            caret-color: #FFD84A !important;
-        }
-
-        div[data-baseweb="input"] > div,
-        div[data-baseweb="input"] > div:hover,
-        div[data-baseweb="input"] > div:focus,
-        div[data-baseweb="input"] > div:focus-within,
-        div[data-baseweb="input"] > div[data-focusvisible="true"],
-        div[data-baseweb="input"][aria-invalid="true"] > div,
-        div[data-baseweb="input"] > div[aria-invalid="true"],
-        div[data-baseweb="input"] > div[data-invalid="true"],
-        div[data-baseweb="input"][data-invalid="true"] > div,
-        [data-testid="stTextInput"] div:focus-within,
-        [data-testid="stDateInput"] div:focus-within {
-            border-color: rgba(255, 216, 74, 0.92) !important;
-            outline: 0 !important;
-            box-shadow:
-                0 0 0 1px rgba(255, 216, 74, 0.92),
-                0 0 0 3px rgba(255, 216, 74, 0.12) !important;
-        }
-
-        div[data-baseweb="input"] input,
-        div[data-baseweb="input"] input:focus,
-        div[data-baseweb="input"] input:focus-visible,
-        div[data-baseweb="input"] input:invalid,
-        div[data-baseweb="input"] input:required,
-        [data-testid="stTextInput"] input,
-        [data-testid="stTextInput"] input:focus,
-        [data-testid="stTextInput"] input:focus-visible,
-        [data-testid="stTextInput"] input:invalid,
-        [data-testid="stDateInput"] input,
-        [data-testid="stDateInput"] input:focus,
-        [data-testid="stDateInput"] input:focus-visible,
-        [data-testid="stDateInput"] input:invalid {
-            border-color: rgba(255, 216, 74, 0.92) !important;
-            outline: 0 !important;
-            box-shadow: none !important;
-        }
-
-        div[data-baseweb="input"] svg,
-        div[data-baseweb="input"] button,
-        [data-testid="stTextInput"] svg,
-        [data-testid="stTextInput"] button {
-            color: #FFF7CC !important;
-            border-color: rgba(255, 216, 74, 0.35) !important;
-            outline: 0 !important;
-            box-shadow: none !important;
-        }
-
+        
         [data-baseweb="tag"] {
             background: linear-gradient(135deg, rgba(255, 216, 74, 0.22), rgba(255, 176, 0, 0.14)) !important;
             border: 1px solid rgba(255, 216, 74, 0.38) !important;
             color: #FFF7CC !important;
             border-radius: 999px !important;
         }
+        
         [data-baseweb="tag"] span { color: #FFF7CC !important; }
         [data-baseweb="tag"] svg { color: #FFF7CC !important; }
 
@@ -428,7 +368,7 @@ def apply_custom_css() -> None:
             backdrop-filter: __HERO_BACKDROP_FILTER__;
             margin-bottom: 1.4rem;
         }
-
+        
         .eyebrow {
             color: var(--cyan);
             text-transform: uppercase;
@@ -437,7 +377,7 @@ def apply_custom_css() -> None:
             font-weight: 800;
             margin-bottom: 0.35rem;
         }
-
+        
         .dashboard-title {
             font-size: clamp(2.2rem, 4vw, 4rem);
             line-height: 1.02;
@@ -446,21 +386,21 @@ def apply_custom_css() -> None:
             margin: 0;
             text-shadow: 0 3px 16px rgba(0,0,0,0.88);
         }
-
+        
         .dashboard-subtitle {
             color: var(--text-soft);
             font-size: 1rem;
             margin-top: 0.8rem;
             text-shadow: 0 2px 10px rgba(0,0,0,0.82);
         }
-
+        
         .section-title {
             font-size: 1.35rem;
             font-weight: 850;
             color: #FFFBEA;
             margin: 1.6rem 0 0.75rem 0;
         }
-
+        
         div[data-testid="stMetric"] {
             position: relative;
             background: __METRIC_BACKGROUND__ !important;
@@ -472,7 +412,7 @@ def apply_custom_css() -> None:
             min-height: 124px;
             overflow: hidden;
         }
-
+        
         div[data-testid="stMetric"]::before {
             content: "";
             position: absolute;
@@ -482,7 +422,7 @@ def apply_custom_css() -> None:
             height: 2px;
             background: linear-gradient(90deg, rgba(255,216,74,0), rgba(255,216,74,0.92), rgba(255,176,0,0));
         }
-
+        
         div[data-testid="stMetricLabel"] p {
             color: #F5EFD8 !important;
             font-weight: 800 !important;
@@ -490,7 +430,7 @@ def apply_custom_css() -> None:
             line-height: 1.25 !important;
             text-shadow: 0 2px 12px rgba(0,0,0,0.96), 0 0 18px rgba(0,0,0,0.70);
         }
-
+        
         div[data-testid="stMetricValue"] {
             color: #FFFBEA !important;
             font-size: clamp(1.85rem, 2.2vw, 2.45rem) !important;
@@ -501,33 +441,49 @@ def apply_custom_css() -> None:
             white-space: normal !important;
             overflow-wrap: anywhere !important;
         }
-
+        
         div[data-testid="stDataFrame"] {
             border: 1px solid var(--border);
             border-radius: 18px;
             overflow: hidden;
             box-shadow: 0 14px 36px rgba(0,0,0,0.30);
         }
-
+        
         button[data-baseweb="tab"] {
             color: #CFC6A5 !important;
             font-weight: 750 !important;
         }
-
+        
         button[data-baseweb="tab"][aria-selected="true"] {
             color: #FFD84A !important;
         }
-
+        
         div[data-baseweb="tab-highlight"] {
             background-color: #FFD84A !important;
         }
-
+        
         .stDownloadButton button, .stButton button {
             border-radius: 14px !important;
             border: 1px solid rgba(255, 216, 74, 0.45) !important;
             background: linear-gradient(135deg, rgba(255, 216, 74, 0.98), rgba(255, 176, 0, 0.86)) !important;
             color: #121008 !important;
             font-weight: 850 !important;
+        }
+        
+        div[data-testid="stSlider"] [data-baseweb="slider"] {
+            background: transparent !important;
+        }
+
+        div[data-testid="stSlider"] [role="slider"] {
+            box-shadow: none !important;
+            outline: none !important;
+        }
+
+        div[data-testid="stSlider"] p,
+        div[data-testid="stSlider"] label,
+        div[data-testid="stSlider"] span {
+            color: #FFD84A !important;
+            font-weight: 800 !important;
         }
         </style>
         """
@@ -541,7 +497,6 @@ def apply_custom_css() -> None:
         unsafe_allow_html=True,
     )
 
-
 def dashboard_background_image_layer(image_url: str) -> str:
     if not image_url:
         return ""
@@ -551,7 +506,6 @@ def dashboard_background_image_layer(image_url: str) -> str:
         "linear-gradient(rgba(5, 5, 5, 0.78), rgba(5, 5, 5, 0.88)),\n"
         f"                url('{safe_url}'),\n"
     )
-
 
 def dashboard_hero_background(*, has_background_image: bool) -> str:
     if has_background_image:
@@ -618,15 +572,15 @@ def dashboard_background_image_url() -> str:
     return f"data:{mime_type};base64,{encoded_image}"
 
 
-def render_header(selected_group: str, selected_vessels: list[str], start_date: date, end_date: date) -> None:
+def render_header(selected_group: str, selected_vessels: list[str]) -> None:
     vessel_text = "All selected vessels" if len(selected_vessels) != 1 else selected_vessels[0]
     st.markdown(
         f"""
         <div class="dashboard-hero">
             <div class="eyebrow">Marorka performance monitoring</div>
-            <h1 class="dashboard-title">Magic Noon - Holly Trinity</h1>
+            <h1 class="dashboard-title">Magic Noon - Holy Trinity</h1>
             <div class="dashboard-subtitle">
-                {escape(selected_group)} | {escape(vessel_text)} | {start_date.strftime('%d/%m/%Y')} to {end_date.strftime('%d/%m/%Y')} | live API snapshot
+                {escape(selected_group)} | {escape(vessel_text)} | live API snapshot
             </div>
         </div>
         """,
@@ -664,7 +618,7 @@ def require_dashboard_password() -> None:
         """
         <div class="dashboard-hero">
             <div class="eyebrow">Secure access</div>
-            <h1 class="dashboard-title">Magic Noon - Holly Trinity</h1>
+            <h1 class="dashboard-title">Magic Noon - Holy Trinity</h1>
             <div class="dashboard-subtitle">Enter your dashboard password to continue.</div>
         </div>
         """,
@@ -1398,21 +1352,59 @@ def selected_vessel_controls() -> tuple[str, list[str]]:
 
 
 def sidebar_controls() -> tuple[date, date, str, list[str], bool]:
-    default_start, default_end = default_report_window()
-    st.sidebar.header("Data Window")
-    start_date = st.sidebar.date_input("Start date", value=default_start, format=UI_DATE_INPUT_FORMAT)
-    end_date = st.sidebar.date_input("End date", value=default_end, format=UI_DATE_INPUT_FORMAT)
-
-    if end_date < start_date:
-        st.sidebar.warning("End date must be on or after start date.")
-        st.stop()
+    api_start_date = API_FULL_START_DATE
+    api_end_date = date.today()
 
     st.sidebar.header("Fleet Selection")
     group, vessels = selected_vessel_controls()
 
     refresh = st.sidebar.button("Load / Refresh API data", use_container_width=True)
-    return start_date, end_date, group, vessels, refresh
+    return api_start_date, api_end_date, group, vessels, refresh
 
+
+
+
+
+def render_dashboard_date_slicer(df: pd.DataFrame) -> tuple[pd.DataFrame, date, date]:
+    if df.empty or "StartDateTimeGMT" not in df.columns:
+        today = date.today()
+        return df, today, today
+
+    dates = pd.to_datetime(df["StartDateTimeGMT"], errors="coerce", utc=True).dt.date.dropna()
+    if dates.empty:
+        today = date.today()
+        return df, today, today
+
+    min_date = max(dates.min(), API_FULL_START_DATE)
+    max_date = min(dates.max(), date.today())
+
+    st.markdown('<div class="section-title">Performance Period</div>', unsafe_allow_html=True)
+    st.caption("Drag the handles to choose the time period used by the KPIs and dashboard tables.")
+
+    if min_date >= max_date:
+        st.caption(f"Available data period: {min_date.strftime('%d/%m/%Y')}")
+        selected_start, selected_end = min_date, max_date
+    else:
+        selected_start, selected_end = st.slider(
+            "Timeline slicer",
+            min_value=min_date,
+            max_value=max_date,
+            value=(min_date, max_date),
+            format="DD/MM/YYYY",
+            key="dashboard_timeline_slicer",
+            label_visibility="collapsed",
+        )
+
+    start_timestamp = pd.Timestamp(selected_start, tz="UTC")
+    end_timestamp = pd.Timestamp(selected_end + timedelta(days=1), tz="UTC")
+    date_values = pd.to_datetime(df["StartDateTimeGMT"], errors="coerce", utc=True)
+    filtered_df = df[date_values.ge(start_timestamp) & date_values.lt(end_timestamp)].copy()
+
+    st.caption(
+        f"Selected period: {selected_start.strftime('%d/%m/%Y')} to {selected_end.strftime('%d/%m/%Y')} "
+        f"({len(filtered_df):,} of {len(df):,} reports)"
+    )
+    return filtered_df, selected_start, selected_end
 
 
 # =============================================================================
@@ -1518,7 +1510,7 @@ def main() -> None:
         st.stop()
 
     start_date, end_date, selected_group, selected_vessels, refresh = sidebar_controls()
-    render_header(selected_group, selected_vessels, start_date, end_date)
+    render_header(selected_group, selected_vessels)
 
     raw_signature = request_signature(username, auth_method, start_date)
     current_raw_signature = st.session_state.get("loaded_request_signature")
@@ -1589,10 +1581,18 @@ def main() -> None:
         st.warning("No matching performance report values were returned for the selected fleet/date window.")
         st.stop()
 
+    tab_dashboard, tab_diagnostics, tab_data = st.tabs(["Dashboard", "API Diagnostics", "Dataset"])
+
+    with tab_dashboard:
+        dashboard_df, dashboard_start_date, dashboard_end_date = render_dashboard_date_slicer(df)
+        if dashboard_df.empty:
+            st.warning("No reports match the selected performance period.")
+            st.stop()
+
     with st.sidebar.expander("KPI Filters: Slip / ME Load / SFOC", expanded=False):
         st.caption("These filters affect only Average Calculated Slip, Average ME Load, and Average SFOC.")
         performance_filter_specs = render_excel_like_filters(
-            df,
+            dashboard_df,
             key_prefix="performance_kpi_filter",
             label="Columns to filter",
             default_columns=DEFAULT_PERFORMANCE_FILTER_COLUMNS,
@@ -1603,7 +1603,7 @@ def main() -> None:
     with st.sidebar.expander("KPI Filters: Boiler Sum", expanded=False):
         st.caption("These filters affect only the Boiler Sum KPI.")
         boiler_filter_specs = render_excel_like_filters(
-            df,
+            dashboard_df,
             key_prefix="boiler_kpi_filter",
             label="Columns to filter",
             default_columns=DEFAULT_BOILER_FILTER_COLUMNS,
@@ -1611,25 +1611,23 @@ def main() -> None:
             default_categorical_filters=DEFAULT_BOILER_CATEGORICAL_FILTERS,
         )
 
-    performance_kpi_df = apply_excel_like_filters(df, performance_filter_specs)
-    boiler_kpi_df = apply_excel_like_filters(df, boiler_filter_specs)
-
-    tab_dashboard, tab_diagnostics, tab_data = st.tabs(["Dashboard", "API Diagnostics", "Dataset"])
+    performance_kpi_df = apply_excel_like_filters(dashboard_df, performance_filter_specs)
+    boiler_kpi_df = apply_excel_like_filters(dashboard_df, boiler_filter_specs)
 
     with tab_dashboard:
         st.markdown('<div class="section-title">Fleet KPIs</div>', unsafe_allow_html=True)
         render_kpis(performance_kpi_df, boiler_kpi_df)
-        if len(performance_kpi_df) != len(df) or len(boiler_kpi_df) != len(df):
+        if len(performance_kpi_df) != len(dashboard_df) or len(boiler_kpi_df) != len(dashboard_df):
             st.caption(
-                f"Performance KPI filters use {len(performance_kpi_df):,} of {len(df):,} reports. "
-                f"Boiler KPI filters use {len(boiler_kpi_df):,} of {len(df):,} reports."
+                f"Performance KPI filters use {len(performance_kpi_df):,} of {len(dashboard_df):,} reports. "
+                f"Boiler KPI filters use {len(boiler_kpi_df):,} of {len(dashboard_df):,} reports."
             )
 
         st.markdown('<div class="section-title">Latest Report By Vessel</div>', unsafe_allow_html=True)
-        st.dataframe(make_display_dataframe(latest_by_vessel(df)), use_container_width=True, hide_index=True)
+        st.dataframe(make_display_dataframe(latest_by_vessel(dashboard_df)), use_container_width=True, hide_index=True)
 
         st.markdown('<div class="section-title">Filtered Report Table</div>', unsafe_allow_html=True)
-        display_df = make_display_dataframe(df.sort_values("EndDateTimeGMT", ascending=False))
+        display_df = make_display_dataframe(dashboard_df.sort_values("EndDateTimeGMT", ascending=False))
         st.dataframe(display_df, use_container_width=True, hide_index=True)
 
     with tab_diagnostics:
@@ -1638,8 +1636,10 @@ def main() -> None:
             {
                 "Metric": [
                     "Selected vessels",
-                    "Selected start date",
-                    "Selected end date",
+                    "API start date",
+                    "API end date",
+                    "Dashboard selected start",
+                    "Dashboard selected end",
                     "API loaded at",
                     "API loaded from start date",
                     "Transformed reports",
@@ -1653,6 +1653,8 @@ def main() -> None:
                     ", ".join(selected_vessels),
                     start_date.isoformat(),
                     end_date.isoformat(),
+                    dashboard_start_date.isoformat(),
+                    dashboard_end_date.isoformat(),
                     metadata.get("loaded_at_utc", "-"),
                     metadata.get("loaded_start_date", "-"),
                     f"{len(df):,}",
