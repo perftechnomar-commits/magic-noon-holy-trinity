@@ -325,12 +325,37 @@ def apply_custom_css() -> None:
             border: 1px solid rgba(255, 216, 74, 0.28) !important;
             border-radius: 14px !important;
         }
+        
+        div[data-baseweb="select"] > div:focus-within,
+        div[data-baseweb="input"] > div:focus-within,
+        div[data-baseweb="input"] > div[data-focusvisible="true"],
+        [data-testid="stTextInput"] input:focus,
+        [data-testid="stDateInput"] input:focus,
+        textarea:focus {
+            border-color: rgba(255, 216, 74, 0.92) !important;
+            box-shadow:
+                0 0 0 1px rgba(255, 216, 74, 0.92),
+                0 0 0 4px rgba(255, 216, 74, 0.16) !important;
+            outline: none !important;
+        }
+
+        div[data-baseweb="input"] > div[aria-invalid="true"],
+        div[data-baseweb="input"][aria-invalid="true"] > div,
+        [data-testid="stTextInput"] [aria-invalid="true"],
+        [data-testid="stDateInput"] [aria-invalid="true"] {
+            border-color: rgba(255, 216, 74, 0.92) !important;
+            box-shadow:
+                0 0 0 1px rgba(255, 216, 74, 0.92),
+                0 0 0 4px rgba(255, 216, 74, 0.12) !important;
+        }
+        
         [data-baseweb="tag"] {
             background: linear-gradient(135deg, rgba(255, 216, 74, 0.22), rgba(255, 176, 0, 0.14)) !important;
             border: 1px solid rgba(255, 216, 74, 0.38) !important;
             color: #FFF7CC !important;
             border-radius: 999px !important;
         }
+        
         [data-baseweb="tag"] span { color: #FFF7CC !important; }
         [data-baseweb="tag"] svg { color: #FFF7CC !important; }
 
@@ -343,6 +368,7 @@ def apply_custom_css() -> None:
             backdrop-filter: __HERO_BACKDROP_FILTER__;
             margin-bottom: 1.4rem;
         }
+        
         .eyebrow {
             color: var(--cyan);
             text-transform: uppercase;
@@ -351,6 +377,7 @@ def apply_custom_css() -> None:
             font-weight: 800;
             margin-bottom: 0.35rem;
         }
+        
         .dashboard-title {
             font-size: clamp(2.2rem, 4vw, 4rem);
             line-height: 1.02;
@@ -359,18 +386,21 @@ def apply_custom_css() -> None:
             margin: 0;
             text-shadow: 0 3px 16px rgba(0,0,0,0.88);
         }
+        
         .dashboard-subtitle {
             color: var(--text-soft);
             font-size: 1rem;
             margin-top: 0.8rem;
             text-shadow: 0 2px 10px rgba(0,0,0,0.82);
         }
+        
         .section-title {
             font-size: 1.35rem;
             font-weight: 850;
             color: #FFFBEA;
             margin: 1.6rem 0 0.75rem 0;
         }
+        
         div[data-testid="stMetric"] {
             position: relative;
             background: __METRIC_BACKGROUND__ !important;
@@ -382,6 +412,7 @@ def apply_custom_css() -> None:
             min-height: 124px;
             overflow: hidden;
         }
+        
         div[data-testid="stMetric"]::before {
             content: "";
             position: absolute;
@@ -391,6 +422,7 @@ def apply_custom_css() -> None:
             height: 2px;
             background: linear-gradient(90deg, rgba(255,216,74,0), rgba(255,216,74,0.92), rgba(255,176,0,0));
         }
+        
         div[data-testid="stMetricLabel"] p {
             color: #F5EFD8 !important;
             font-weight: 800 !important;
@@ -398,6 +430,7 @@ def apply_custom_css() -> None:
             line-height: 1.25 !important;
             text-shadow: 0 2px 12px rgba(0,0,0,0.96), 0 0 18px rgba(0,0,0,0.70);
         }
+        
         div[data-testid="stMetricValue"] {
             color: #FFFBEA !important;
             font-size: clamp(1.85rem, 2.2vw, 2.45rem) !important;
@@ -408,22 +441,27 @@ def apply_custom_css() -> None:
             white-space: normal !important;
             overflow-wrap: anywhere !important;
         }
+        
         div[data-testid="stDataFrame"] {
             border: 1px solid var(--border);
             border-radius: 18px;
             overflow: hidden;
             box-shadow: 0 14px 36px rgba(0,0,0,0.30);
         }
+        
         button[data-baseweb="tab"] {
             color: #CFC6A5 !important;
             font-weight: 750 !important;
         }
+        
         button[data-baseweb="tab"][aria-selected="true"] {
             color: #FFD84A !important;
         }
+        
         div[data-baseweb="tab-highlight"] {
             background-color: #FFD84A !important;
         }
+        
         .stDownloadButton button, .stButton button {
             border-radius: 14px !important;
             border: 1px solid rgba(255, 216, 74, 0.45) !important;
@@ -431,6 +469,7 @@ def apply_custom_css() -> None:
             color: #121008 !important;
             font-weight: 850 !important;
         }
+        
         div[data-testid="stSlider"] [data-baseweb="slider"] {
             background: transparent !important;
         }
