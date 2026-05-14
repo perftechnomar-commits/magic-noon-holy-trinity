@@ -317,42 +317,81 @@ def apply_custom_css() -> None:
             font-weight: 700 !important;
         }
 
+        /* Inputs: calm by default, gold only when the user focuses/clicks. */
         div[data-baseweb="select"] > div,
         div[data-baseweb="input"] > div,
         [data-testid="stTextInput"] input,
         [data-testid="stDateInput"] input {
-            background-color: #0D0D09 !important;
-            border: 1px solid rgba(255, 216, 74, 0.28) !important;
+            background-color: rgba(13, 13, 9, 0.88) !important;
+            border: 1px solid rgba(255, 216, 74, 0.16) !important;
             border-radius: 14px !important;
+            box-shadow: none !important;
+            outline: none !important;
+            transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease !important;
+        }
+
+        div[data-baseweb="select"] > div:hover,
+        div[data-baseweb="input"] > div:hover,
+        [data-testid="stTextInput"] input:hover,
+        [data-testid="stDateInput"] input:hover {
+            border-color: rgba(255, 216, 74, 0.24) !important;
+            box-shadow: none !important;
         }
 
         div[data-baseweb="select"] > div:focus-within,
         div[data-baseweb="input"] > div:focus-within,
-        div[data-baseweb="input"] > div[data-focusvisible="true"],
-        [data-testid="stTextInput"] input:focus,
-        [data-testid="stDateInput"] input:focus,
-        textarea:focus {
-            border-color: rgba(255, 216, 74, 0.92) !important;
+        div[data-baseweb="input"]:focus-within > div,
+        [data-testid="stTextInput"] div:focus-within,
+        [data-testid="stDateInput"] div:focus-within {
+            border-color: rgba(255, 216, 74, 0.82) !important;
             box-shadow:
-                0 0 0 1px rgba(255, 216, 74, 0.92),
-                0 0 0 4px rgba(255, 216, 74, 0.16) !important;
+                0 0 0 1px rgba(255, 216, 74, 0.62),
+                0 0 0 3px rgba(255, 216, 74, 0.10) !important;
             outline: none !important;
         }
 
-        div[data-baseweb="input"] > div[aria-invalid="true"],
-        div[data-baseweb="input"][aria-invalid="true"] > div,
-        [data-testid="stTextInput"] [aria-invalid="true"],
-        [data-testid="stDateInput"] [aria-invalid="true"] {
-            border-color: rgba(255, 216, 74, 0.92) !important;
-            box-shadow:
-                0 0 0 1px rgba(255, 216, 74, 0.92),
-                0 0 0 4px rgba(255, 216, 74, 0.12) !important;
+        div[data-baseweb="input"] input,
+        div[data-baseweb="input"] input:focus,
+        div[data-baseweb="input"] input:focus-visible,
+        [data-testid="stTextInput"] input,
+        [data-testid="stTextInput"] input:focus,
+        [data-testid="stTextInput"] input:focus-visible,
+        [data-testid="stDateInput"] input,
+        [data-testid="stDateInput"] input:focus,
+        [data-testid="stDateInput"] input:focus-visible,
+        textarea,
+        textarea:focus,
+        textarea:focus-visible {
+            outline: none !important;
+            box-shadow: none !important;
+            caret-color: #FFD84A !important;
         }
 
+        /* Suppress Streamlit/BaseWeb red/orange validation rings without making
+           unfocused inputs look selected. */
+        div[data-baseweb="input"] > div[aria-invalid="true"],
+        div[data-baseweb="input"][aria-invalid="true"] > div,
+        div[data-baseweb="input"] > div[data-invalid="true"],
+        div[data-baseweb="input"][data-invalid="true"] > div,
+        [data-testid="stTextInput"] [aria-invalid="true"],
+        [data-testid="stDateInput"] [aria-invalid="true"] {
+            border-color: rgba(255, 216, 74, 0.24) !important;
+            box-shadow: none !important;
+            outline: none !important;
+        }
 
-        /* Remove remaining Streamlit/BaseWeb browser validation accent rings.
-           Some password/date inputs keep a second warning-colored outline on the
-           wrapper even after the normal input focus styles are overridden. */
+        div[data-baseweb="input"] > div[aria-invalid="true"]:focus-within,
+        div[data-baseweb="input"][aria-invalid="true"] > div:focus-within,
+        div[data-baseweb="input"] > div[data-invalid="true"]:focus-within,
+        div[data-baseweb="input"][data-invalid="true"] > div:focus-within,
+        [data-testid="stTextInput"] [aria-invalid="true"]:focus-within,
+        [data-testid="stDateInput"] [aria-invalid="true"]:focus-within {
+            border-color: rgba(255, 216, 74, 0.82) !important;
+            box-shadow:
+                0 0 0 1px rgba(255, 216, 74, 0.62),
+                0 0 0 3px rgba(255, 216, 74, 0.10) !important;
+        }
+
         div[data-baseweb="input"],
         div[data-baseweb="input"] *,
         [data-testid="stTextInput"],
@@ -360,46 +399,9 @@ def apply_custom_css() -> None:
         [data-testid="stDateInput"],
         [data-testid="stDateInput"] * {
             --focus-color: #FFD84A !important;
-            --input-border-color: rgba(255, 216, 74, 0.92) !important;
+            --input-border-color: rgba(255, 216, 74, 0.24) !important;
             --error-color: #FFD84A !important;
             outline-color: #FFD84A !important;
-            caret-color: #FFD84A !important;
-        }
-
-        div[data-baseweb="input"] > div,
-        div[data-baseweb="input"] > div:hover,
-        div[data-baseweb="input"] > div:focus,
-        div[data-baseweb="input"] > div:focus-within,
-        div[data-baseweb="input"] > div[data-focusvisible="true"],
-        div[data-baseweb="input"][aria-invalid="true"] > div,
-        div[data-baseweb="input"] > div[aria-invalid="true"],
-        div[data-baseweb="input"] > div[data-invalid="true"],
-        div[data-baseweb="input"][data-invalid="true"] > div,
-        [data-testid="stTextInput"] div:focus-within,
-        [data-testid="stDateInput"] div:focus-within {
-            border-color: rgba(255, 216, 74, 0.92) !important;
-            outline: 0 !important;
-            box-shadow:
-                0 0 0 1px rgba(255, 216, 74, 0.92),
-                0 0 0 3px rgba(255, 216, 74, 0.12) !important;
-        }
-
-        div[data-baseweb="input"] input,
-        div[data-baseweb="input"] input:focus,
-        div[data-baseweb="input"] input:focus-visible,
-        div[data-baseweb="input"] input:invalid,
-        div[data-baseweb="input"] input:required,
-        [data-testid="stTextInput"] input,
-        [data-testid="stTextInput"] input:focus,
-        [data-testid="stTextInput"] input:focus-visible,
-        [data-testid="stTextInput"] input:invalid,
-        [data-testid="stDateInput"] input,
-        [data-testid="stDateInput"] input:focus,
-        [data-testid="stDateInput"] input:focus-visible,
-        [data-testid="stDateInput"] input:invalid {
-            border-color: rgba(255, 216, 74, 0.92) !important;
-            outline: 0 !important;
-            box-shadow: none !important;
         }
 
         div[data-baseweb="input"] svg,
@@ -407,7 +409,7 @@ def apply_custom_css() -> None:
         [data-testid="stTextInput"] svg,
         [data-testid="stTextInput"] button {
             color: #FFF7CC !important;
-            border-color: rgba(255, 216, 74, 0.35) !important;
+            border-color: rgba(255, 216, 74, 0.22) !important;
             outline: 0 !important;
             box-shadow: none !important;
         }
@@ -531,6 +533,7 @@ def apply_custom_css() -> None:
             color: #121008 !important;
             font-weight: 850 !important;
         }
+
         </style>
         """
         .replace("__BACKGROUND_IMAGE_LAYER__", background_image_layer)
