@@ -325,7 +325,7 @@ def apply_custom_css() -> None:
             border: 1px solid rgba(255, 216, 74, 0.28) !important;
             border-radius: 14px !important;
         }
-        
+
         div[data-baseweb="select"] > div:focus-within,
         div[data-baseweb="input"] > div:focus-within,
         div[data-baseweb="input"] > div[data-focusvisible="true"],
@@ -348,14 +348,76 @@ def apply_custom_css() -> None:
                 0 0 0 1px rgba(255, 216, 74, 0.92),
                 0 0 0 4px rgba(255, 216, 74, 0.12) !important;
         }
-        
+
+
+        /* Remove remaining Streamlit/BaseWeb browser validation accent rings.
+           Some password/date inputs keep a second warning-colored outline on the
+           wrapper even after the normal input focus styles are overridden. */
+        div[data-baseweb="input"],
+        div[data-baseweb="input"] *,
+        [data-testid="stTextInput"],
+        [data-testid="stTextInput"] *,
+        [data-testid="stDateInput"],
+        [data-testid="stDateInput"] * {
+            --focus-color: #FFD84A !important;
+            --input-border-color: rgba(255, 216, 74, 0.92) !important;
+            --error-color: #FFD84A !important;
+            outline-color: #FFD84A !important;
+            caret-color: #FFD84A !important;
+        }
+
+        div[data-baseweb="input"] > div,
+        div[data-baseweb="input"] > div:hover,
+        div[data-baseweb="input"] > div:focus,
+        div[data-baseweb="input"] > div:focus-within,
+        div[data-baseweb="input"] > div[data-focusvisible="true"],
+        div[data-baseweb="input"][aria-invalid="true"] > div,
+        div[data-baseweb="input"] > div[aria-invalid="true"],
+        div[data-baseweb="input"] > div[data-invalid="true"],
+        div[data-baseweb="input"][data-invalid="true"] > div,
+        [data-testid="stTextInput"] div:focus-within,
+        [data-testid="stDateInput"] div:focus-within {
+            border-color: rgba(255, 216, 74, 0.92) !important;
+            outline: 0 !important;
+            box-shadow:
+                0 0 0 1px rgba(255, 216, 74, 0.92),
+                0 0 0 3px rgba(255, 216, 74, 0.12) !important;
+        }
+
+        div[data-baseweb="input"] input,
+        div[data-baseweb="input"] input:focus,
+        div[data-baseweb="input"] input:focus-visible,
+        div[data-baseweb="input"] input:invalid,
+        div[data-baseweb="input"] input:required,
+        [data-testid="stTextInput"] input,
+        [data-testid="stTextInput"] input:focus,
+        [data-testid="stTextInput"] input:focus-visible,
+        [data-testid="stTextInput"] input:invalid,
+        [data-testid="stDateInput"] input,
+        [data-testid="stDateInput"] input:focus,
+        [data-testid="stDateInput"] input:focus-visible,
+        [data-testid="stDateInput"] input:invalid {
+            border-color: rgba(255, 216, 74, 0.92) !important;
+            outline: 0 !important;
+            box-shadow: none !important;
+        }
+
+        div[data-baseweb="input"] svg,
+        div[data-baseweb="input"] button,
+        [data-testid="stTextInput"] svg,
+        [data-testid="stTextInput"] button {
+            color: #FFF7CC !important;
+            border-color: rgba(255, 216, 74, 0.35) !important;
+            outline: 0 !important;
+            box-shadow: none !important;
+        }
+
         [data-baseweb="tag"] {
             background: linear-gradient(135deg, rgba(255, 216, 74, 0.22), rgba(255, 176, 0, 0.14)) !important;
             border: 1px solid rgba(255, 216, 74, 0.38) !important;
             color: #FFF7CC !important;
             border-radius: 999px !important;
         }
-        
         [data-baseweb="tag"] span { color: #FFF7CC !important; }
         [data-baseweb="tag"] svg { color: #FFF7CC !important; }
 
@@ -368,7 +430,7 @@ def apply_custom_css() -> None:
             backdrop-filter: __HERO_BACKDROP_FILTER__;
             margin-bottom: 1.4rem;
         }
-        
+
         .eyebrow {
             color: var(--cyan);
             text-transform: uppercase;
@@ -377,7 +439,7 @@ def apply_custom_css() -> None:
             font-weight: 800;
             margin-bottom: 0.35rem;
         }
-        
+
         .dashboard-title {
             font-size: clamp(2.2rem, 4vw, 4rem);
             line-height: 1.02;
@@ -386,21 +448,21 @@ def apply_custom_css() -> None:
             margin: 0;
             text-shadow: 0 3px 16px rgba(0,0,0,0.88);
         }
-        
+
         .dashboard-subtitle {
             color: var(--text-soft);
             font-size: 1rem;
             margin-top: 0.8rem;
             text-shadow: 0 2px 10px rgba(0,0,0,0.82);
         }
-        
+
         .section-title {
             font-size: 1.35rem;
             font-weight: 850;
             color: #FFFBEA;
             margin: 1.6rem 0 0.75rem 0;
         }
-        
+
         div[data-testid="stMetric"] {
             position: relative;
             background: __METRIC_BACKGROUND__ !important;
@@ -412,7 +474,7 @@ def apply_custom_css() -> None:
             min-height: 124px;
             overflow: hidden;
         }
-        
+
         div[data-testid="stMetric"]::before {
             content: "";
             position: absolute;
@@ -422,7 +484,7 @@ def apply_custom_css() -> None:
             height: 2px;
             background: linear-gradient(90deg, rgba(255,216,74,0), rgba(255,216,74,0.92), rgba(255,176,0,0));
         }
-        
+
         div[data-testid="stMetricLabel"] p {
             color: #F5EFD8 !important;
             font-weight: 800 !important;
@@ -430,7 +492,7 @@ def apply_custom_css() -> None:
             line-height: 1.25 !important;
             text-shadow: 0 2px 12px rgba(0,0,0,0.96), 0 0 18px rgba(0,0,0,0.70);
         }
-        
+
         div[data-testid="stMetricValue"] {
             color: #FFFBEA !important;
             font-size: clamp(1.85rem, 2.2vw, 2.45rem) !important;
@@ -441,49 +503,33 @@ def apply_custom_css() -> None:
             white-space: normal !important;
             overflow-wrap: anywhere !important;
         }
-        
+
         div[data-testid="stDataFrame"] {
             border: 1px solid var(--border);
             border-radius: 18px;
             overflow: hidden;
             box-shadow: 0 14px 36px rgba(0,0,0,0.30);
         }
-        
+
         button[data-baseweb="tab"] {
             color: #CFC6A5 !important;
             font-weight: 750 !important;
         }
-        
+
         button[data-baseweb="tab"][aria-selected="true"] {
             color: #FFD84A !important;
         }
-        
+
         div[data-baseweb="tab-highlight"] {
             background-color: #FFD84A !important;
         }
-        
+
         .stDownloadButton button, .stButton button {
             border-radius: 14px !important;
             border: 1px solid rgba(255, 216, 74, 0.45) !important;
             background: linear-gradient(135deg, rgba(255, 216, 74, 0.98), rgba(255, 176, 0, 0.86)) !important;
             color: #121008 !important;
             font-weight: 850 !important;
-        }
-        
-        div[data-testid="stSlider"] [data-baseweb="slider"] {
-            background: transparent !important;
-        }
-
-        div[data-testid="stSlider"] [role="slider"] {
-            box-shadow: none !important;
-            outline: none !important;
-        }
-
-        div[data-testid="stSlider"] p,
-        div[data-testid="stSlider"] label,
-        div[data-testid="stSlider"] span {
-            color: #FFD84A !important;
-            font-weight: 800 !important;
         }
         </style>
         """
