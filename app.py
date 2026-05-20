@@ -1006,6 +1006,21 @@ def fetch_report_data(
     }
     return rows_to_dataframe(kept_rows), metadata
 
+@st.cache_data(ttl=API_CACHE_TTL_SECONDS, show_spinner=False)
+def cached_fetch_report_data(
+    username: str,
+    password: str,
+    token: str,
+    auth_method: str,
+    start_date: date,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    return fetch_report_data(
+        username=username,
+        password=password,
+        token=token,
+        auth_method=auth_method,
+        start_date=start_date,
+    )
 
 # =============================================================================
 # Transform helpers
@@ -1794,7 +1809,7 @@ def main() -> None:
 
         try:
             with st.spinner("Loading compact Marorka report data..."):
-                raw_df, metadata = fetch_report_data(
+                raw_df, metadata = cached_fetch_report_data(
                     username=username,
                     password=password,
                     token=token,
