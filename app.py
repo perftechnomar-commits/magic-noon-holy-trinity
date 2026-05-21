@@ -685,9 +685,10 @@ def apply_custom_css() -> None:
             box-shadow: none !important;
             outline: none !important;
         }
-        /* Timeline slider: make track, selected range, handles, and date labels yellow/gold */
-        div[data-testid="stSlider"] div[data-baseweb="slider"] > div {
-            color: #FFD84A !important;
+        /* Timeline slider: force full yellow/gold styling */
+        div[data-testid="stSlider"] [data-baseweb="slider"] div {
+            background-color: #FFD84A !important;
+            border-color: #FFD84A !important;
         }
         
         div[data-testid="stSlider"] [role="slider"] {
@@ -700,7 +701,7 @@ def apply_custom_css() -> None:
             color: #FFD84A !important;
         }
         
-        div[data-testid="stSlider"] div {
+        div[data-testid="stSlider"] {
             accent-color: #FFD84A !important;
         }
         </style>
