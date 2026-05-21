@@ -685,12 +685,7 @@ def apply_custom_css() -> None:
             box-shadow: none !important;
             outline: none !important;
         }
-        /* Timeline slider: force full yellow/gold styling */
-        div[data-testid="stSlider"] [data-baseweb="slider"] div {
-            background-color: #FFD84A !important;
-            border-color: #FFD84A !important;
-        }
-        
+        /* Timeline slider: theme-driven yellow/gold styling */
         div[data-testid="stSlider"] [role="slider"] {
             background-color: #FFD84A !important;
             border-color: #FFD84A !important;
