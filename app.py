@@ -1783,10 +1783,9 @@ def sidebar_controls() -> tuple[date, date, str, list[str], bool]:
     api_start_date = API_FULL_START_DATE
     api_end_date = date.today()
 
-    
+    refresh = st.sidebar.button("Refresh API data", use_container_width=False)    
     group, vessels = selected_vessel_controls()
 
-    refresh = st.sidebar.button("Refresh API data", use_container_width=False)
     return api_start_date, api_end_date, group, vessels, refresh
 
 
