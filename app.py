@@ -558,6 +558,19 @@ def apply_custom_css() -> None:
             color: #121008 !important;
             font-weight: 850 !important;
         }
+        
+        /* Sidebar refresh button compact sizing */
+        section[data-testid="stSidebar"] .stButton button {
+            width: auto !important;
+            min-width: 145px !important;
+            max-width: 165px !important;
+        
+            padding: 0.45rem 0.85rem !important;
+            font-size: 0.90rem !important;
+            min-height: 38px !important;
+        
+            margin-bottom: 0.85rem !important;
+        }
 
 
         /* Final unified input styling: one calm surface, one yellow focus line, no orange/red rings. */
@@ -1773,7 +1786,7 @@ def sidebar_controls() -> tuple[date, date, str, list[str], bool]:
     st.sidebar.header("Fleet Selection")
     group, vessels = selected_vessel_controls()
 
-    refresh = st.sidebar.button("Refresh API data", use_container_width=True)
+    refresh = st.sidebar.button("Refresh API data", use_container_width=False)
     return api_start_date, api_end_date, group, vessels, refresh
 
 
