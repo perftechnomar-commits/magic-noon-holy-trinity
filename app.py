@@ -1773,7 +1773,7 @@ def sidebar_controls() -> tuple[date, date, str, list[str], bool]:
     st.sidebar.header("Fleet Selection")
     group, vessels = selected_vessel_controls()
 
-    refresh = st.sidebar.button("Load / Refresh API data", use_container_width=True)
+    refresh = st.sidebar.button("Refresh API data", use_container_width=True)
     return api_start_date, api_end_date, group, vessels, refresh
 
 
@@ -2019,15 +2019,16 @@ def main() -> None:
     )
 
     if needs_raw_load:
-        if not refresh:
-            st.info(
-                "Click **Load / Refresh API data** to pull Marorka data. "
-                "KPI filter changes will use the loaded data locally and will not call the API."
-            )
-            st.stop()
+        if refresh:
+            cached_fetch_report_data.clear()
 
         try:
-            with st.spinner("Loading compact Marorka report data..."):
+            spinner_text = (
+                "Refreshing compact Marorka report data..."
+                if refresh
+                else "Loading compact Marorka report data..."
+            )
+            with st.spinner(spinner_text):
                 raw_df, metadata = cached_fetch_report_data(
                     username=username,
                     password=password,
@@ -2055,7 +2056,7 @@ def main() -> None:
     raw_df = st.session_state.get("loaded_raw_df")
 
     if raw_df is None or metadata is None:
-        st.info("Click **Load / Refresh API data** to load the selected report window.")
+        st.info("Loading Marorka data automatically. Use **Refresh API data** to force a new API pull.")
         st.stop()
 
     if all_df is None or current_transform_sig != transform_sig:
