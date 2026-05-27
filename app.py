@@ -828,7 +828,7 @@ def render_header(selected_group: str, selected_vessels: list[str]) -> None:
             <div class="eyebrow">Marorka performance monitoring</div>
             <h1 class="dashboard-title">Performance KPIs</h1>
             <div class="dashboard-subtitle">
-                {escape(selected_group)} | {escape(vessel_text)} | API snapshot
+                {escape(selected_group)} | {escape(vessel_text)}
             </div>
         </div>
         """,
@@ -853,7 +853,6 @@ def render_api_load_caption(metadata: dict[str, Any] | None) -> None:
         f"""
         <div class="api-load-caption">
             Last API load: <span>{escape(str(last_load))}</span>
-            · compact API rows: <span>{kept_rows:,}</span>{extra}
         </div>
         """,
         unsafe_allow_html=True,
