@@ -842,17 +842,13 @@ def render_api_load_caption(metadata: dict[str, Any] | None) -> None:
     """Render one small, discrete last-load indicator below the dashboard hero."""
     metadata = metadata or {}
     last_load = metadata.get("loaded_at_local") or metadata.get("loaded_at_utc") or "-"
-    kept_rows = int(metadata.get("kept_rows", metadata.get("rows", 0)) or 0)
-    transformed_rows = int(metadata.get("transformed_rows", 0) or 0)
 
-    extra = ""
-    if transformed_rows:
-        extra = f" · dashboard rows: <span>{transformed_rows:,}</span>"
+    last_load_display = str(last_load).replace(" EEST", "").replace(" EET", "")
 
     st.markdown(
         f"""
         <div class="api-load-caption">
-            Last API load: <span>{escape(str(last_load))}</span>
+            Last API load: <span>{escape(last_load_display)} LT</span>
         </div>
         """,
         unsafe_allow_html=True,
