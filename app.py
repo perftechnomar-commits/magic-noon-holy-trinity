@@ -2045,7 +2045,7 @@ def set_loaded_raw_state(
     signature: dict[str, Any],
 ) -> None:
     metadata = metadata.copy()
-    metadata.setdefault("loaded_at_utc", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"))
+    metadata.setdefault("loaded_at_utc", datetime.now(timezone.utc).strftime("%d-%m-%Y %H:%M:%S UTC"))
     metadata.setdefault("loaded_at_local", local_time_label())
     metadata["loaded_start_date"] = signature["start_date"]
     st.session_state["loaded_raw_df"] = raw_df
