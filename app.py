@@ -890,7 +890,7 @@ def local_time_label(dt_utc: datetime | None = None) -> str:
     if dt_utc.tzinfo is None:
         dt_utc = dt_utc.replace(tzinfo=timezone.utc)
     local_dt = dt_utc.astimezone(app_timezone())
-    return local_dt.strftime("%Y-%m-%d %H:%M:%S %Z")
+    return local_dt.strftime("%d-%m-%Y %H:%M:%S %Z")
 
 
 def get_query_param(name: str, default: str = "") -> str:
@@ -986,7 +986,7 @@ def default_report_window(today: date | None = None) -> tuple[date, date]:
 
 
 def build_odata_url(start_date: date) -> str:
-    start_text = start_date.strftime("%Y-%m-%d")
+    start_text = start_date.strftime("%d-%m-%Y")
     params = {
         "$filter": f"StartDateTimeGMT gt DateTime'{start_text}'",
         "$select": ",".join(SOURCE_COLUMNS),
@@ -1086,7 +1086,7 @@ def fetch_report_data(
 
     loaded_at_utc = datetime.now(timezone.utc)
     metadata = {
-        "loaded_at_utc": loaded_at_utc.strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "loaded_at_utc": loaded_at_utc.strftime("%d-%m-%Y %H:%M:%S UTC"),
         "loaded_at_local": local_time_label(loaded_at_utc),
         "rows": len(kept_rows),
         "kept_rows": len(kept_rows),
