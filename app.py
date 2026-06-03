@@ -982,7 +982,7 @@ def default_report_window(today: date | None = None) -> tuple[date, date]:
 
 
 def build_odata_url(start_date: date) -> str:
-    start_text = start_date.strftime("%d-%m-%Y")
+    start_text = start_date.strftime("%Y-%m-%d")
     params = {
         "$filter": f"StartDateTimeGMT gt DateTime'{start_text}'",
         "$select": ",".join(SOURCE_COLUMNS),
