@@ -1920,6 +1920,19 @@ def render_dashboard_date_slicer(df: pd.DataFrame) -> tuple[pd.DataFrame, date, 
     return filtered_df, selected_start, selected_end
 
 
+def dataframe_date_window(df: pd.DataFrame) -> tuple[date, date]:
+    if df.empty or "StartDateTimeGMT" not in df.columns:
+        today = date.today()
+        return today, today
+
+    dates = pd.to_datetime(df["StartDateTimeGMT"], errors="coerce", utc=True).dt.date.dropna()
+    if dates.empty:
+        today = date.today()
+        return today, today
+
+    return max(dates.min(), API_FULL_START_DATE), min(dates.max(), date.today())
+
+
 def filter_dataframe_by_date_range(df: pd.DataFrame, selected_start: date, selected_end: date) -> pd.DataFrame:
     if df.empty or "StartDateTimeGMT" not in df.columns:
         return df
@@ -2250,11 +2263,12 @@ def main() -> None:
             "Check API Diagnostics before using the report."
         )
 
-    with tab_dashboard:
-        dashboard_df, dashboard_start_date, dashboard_end_date = render_dashboard_date_slicer(df)
-        if dashboard_df.empty:
-            st.warning("No reports match the selected performance period.")
-            st.stop()
+    dashboard_df = df.copy()
+    dashboard_start_date, dashboard_end_date = dataframe_date_window(dashboard_df)
+
+    if dashboard_df.empty:
+        st.warning("No reports match the selected vessel/fleet selection.")
+        st.stop()
 
     with st.sidebar.expander("KPI Filters: Slip / ME Load / SFOC", expanded=False):
         st.caption("These filters affect only Average Calculated Slip, Average ME Load, and Average SFOC.")
