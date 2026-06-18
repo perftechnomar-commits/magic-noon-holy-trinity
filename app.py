@@ -1985,7 +1985,7 @@ def render_kpi_date_slicer(
 
     min_date = max(dates.min(), API_FULL_START_DATE)
     max_date = min(dates.max(), date.today())
-
+    
     previous_value = st.session_state.get(key)
     if isinstance(previous_value, tuple) and len(previous_value) == 2:
         previous_start, _previous_end = previous_value
