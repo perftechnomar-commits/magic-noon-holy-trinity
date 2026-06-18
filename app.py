@@ -1876,18 +1876,18 @@ def sidebar_controls() -> tuple[date, date, str, list[str], bool]:
     refresh = False
     if st.session_state.get("confirm_api_refresh"):
         metadata = st.session_state.get("loaded_metadata") or {}
-    	last_load = metadata.get("loaded_at_local") or metadata.get("loaded_at_utc") or "-"
-    	last_load_display = str(last_load).replace(" EEST", "").replace(" EET", "")
+        last_load = metadata.get("loaded_at_local") or metadata.get("loaded_at_utc") or "-"
+        last_load_display = str(last_load).replace(" EEST", "").replace(" EET", "")
 
     	st.sidebar.warning(
-        	f"Refresh will call the API and may take a while.\n\n"
+            f"Refresh will call the API and may take a while.\n\n"
         	f"Last updated data was on: {last_load_display} LT"
     	)
 
     	col1, col2 = st.sidebar.columns(2)
 
     	if col1.button("Confirm"):
-        	refresh = True
+            refresh = True
         	st.session_state["confirm_api_refresh"] = False
 
     	if col2.button("Cancel"):
