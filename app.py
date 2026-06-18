@@ -1889,9 +1889,9 @@ def sidebar_controls() -> tuple[date, date, str, list[str], bool]:
         
         if col1.button("Confirm"):
             refresh = True
-        	st.session_state["confirm_api_refresh"] = False
-
-    	if col2.button("Cancel"):
+            st.session_state["confirm_api_refresh"] = False
+                
+        if col2.button("Cancel"):
         	st.session_state["confirm_api_refresh"] = False
         	st.rerun()
 
@@ -2317,7 +2317,8 @@ def main() -> None:
             default_categorical_filters=DEFAULT_BOILER_CATEGORICAL_FILTERS,
         )
 
-    performance_kpi_base_df = apply_excel_like_filters(dashboard_df, performance_filter_specs)
+    performance_kpi_base_df = apply_excel_like_filters(dashboard_df, 
+                                                       performance_filter_specs)
     boiler_kpi_base_df = apply_excel_like_filters(dashboard_df, boiler_filter_specs)
 
     with tab_dashboard:
@@ -2339,7 +2340,7 @@ def main() -> None:
             label="Boiler Sum period",
             key="boiler_sum_kpi_period_slicer",
         )
-
+    
         render_kpis(slip_kpi_df, me_sfoc_kpi_df, boiler_kpi_df)
 
         kpi_excel_bytes = to_kpi_excel_bytes(
