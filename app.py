@@ -1580,7 +1580,8 @@ def numeric_series(df: pd.DataFrame, column: str) -> pd.Series:
 
 
 def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.DataFrame) -> None:
-    slip = numeric_series(slip_df, "Calculated Slip").mean()
+    slip = numeric_series(slip_df, "Calculated Slip").    
+    mean()
     me_load = numeric_series(me_sfoc_df, "ME Load [%MCR]").mean()
     sfoc = numeric_series(me_sfoc_df, "SFOC [gr/Kwh]").replace(0, pd.NA).mean()
     boiler = numeric_series(boiler_df, "Boiler Sum").sum(min_count=1)
@@ -1884,8 +1885,8 @@ def sidebar_controls() -> tuple[date, date, str, list[str], bool]:
         	f"Last updated data was on: {last_load_display} LT")
         
         col1, col2 = st.sidebar.columns(2)
-
-    	if col1.button("Confirm"):
+        
+        if col1.button("Confirm"):
             refresh = True
         	st.session_state["confirm_api_refresh"] = False
 
