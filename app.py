@@ -1879,7 +1879,7 @@ def sidebar_controls() -> tuple[date, date, str, list[str], bool]:
         last_load = metadata.get("loaded_at_local") or metadata.get("loaded_at_utc") or "-"
         last_load_display = str(last_load).replace(" EEST", "").replace(" EET", "")
 
-    	st.sidebar.warning(
+        st.sidebar.warning(
             f"Refresh will call the API and may take a while.\n\n"
         	f"Last updated data was on: {last_load_display} LT"
     	)
