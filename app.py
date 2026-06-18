@@ -1881,10 +1881,9 @@ def sidebar_controls() -> tuple[date, date, str, list[str], bool]:
 
         st.sidebar.warning(
             f"Refresh will call the API and may take a while.\n\n"
-        	f"Last updated data was on: {last_load_display} LT"
-    	)
-
-    	col1, col2 = st.sidebar.columns(2)
+        	f"Last updated data was on: {last_load_display} LT")
+        
+        col1, col2 = st.sidebar.columns(2)
 
     	if col1.button("Confirm"):
             refresh = True
