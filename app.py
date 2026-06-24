@@ -171,7 +171,7 @@ DISPLAY_COLUMNS = [
     "MELO ROB [ltr]",
     "MELO Received [ltr]",
     "MELO Consumption [ltr]",
-    "MELO SLOC [g/Kwh]",
+    "MELO Consumption [ltr/day]",
     "Cylinder Oil 1 ROB [ltr]",
     "Cylinder Oil 1 Received [ltr]",
     "Cylinder Oil 2 ROB [ltr]",
@@ -1414,6 +1414,15 @@ def calculate_sloc_g_per_kwh(
     return safe_divide(consumption_grams, energy_kwh)
 
 
+def calculate_consumption_ltr_per_day(
+    consumption_ltr: pd.Series,
+    running_hours: pd.Series,
+) -> pd.Series:
+    running_hours = pd.to_numeric(running_hours, errors="coerce")
+    running_hours = running_hours.mask(running_hours <= 0)
+    return safe_divide(pd.to_numeric(consumption_ltr, errors="coerce") * 24, running_hours)
+
+
 def add_calculations(report_df: pd.DataFrame) -> pd.DataFrame:
     df = report_df.copy()
     lap_time = pd.to_numeric(df.get("LapTime"), errors="coerce")
@@ -1464,11 +1473,10 @@ def add_calculations(report_df: pd.DataFrame) -> pd.DataFrame:
     ).round(3)
 
     dg_power = pd.to_numeric(df.get("Total DG Power [kW]"), errors="coerce")
-    df["MELO SLOC [g/Kwh]"] = calculate_sloc_g_per_kwh(
+    steaming_hours = pd.to_numeric(df.get("Steaming Time Since Last Report [hh:mm]"), errors="coerce")
+    df["MELO Consumption [ltr/day]"] = calculate_consumption_ltr_per_day(
         df["MELO Consumption [ltr]"],
-        power,
-        lap_time,
-        MELO_DENSITY_KG_PER_LTR,
+        steaming_hours,
     ).round(3)
     df["CYLO SLOC [g/Kwh]"] = calculate_sloc_g_per_kwh(
         df["Cylinder Oil Consumption [ltr]"],
@@ -1476,7 +1484,7 @@ def add_calculations(report_df: pd.DataFrame) -> pd.DataFrame:
         lap_time,
         CYLO_DENSITY_KG_PER_LTR,
     ).round(3)
-    df["DG SLOC [g/Kwh]"] = calculate_sloc_g_per_kwh(
+    df["GELO SLOC [g/Kwh]"] = calculate_sloc_g_per_kwh(
         df["GELO Consumption [ltr]"],
         dg_power,
         lap_time,
@@ -1637,9 +1645,9 @@ def to_kpi_excel_bytes(
         me_load = numeric_series(vessel_me_sfoc_df, "ME Load [%MCR]").mean()
         sfoc = numeric_series(vessel_me_sfoc_df, "SFOC [gr/Kwh]").replace(0, pd.NA).mean()
         boiler = numeric_series(vessel_boiler_df, "Boiler Sum").sum(min_count=1)
-        melo_sloc = numeric_series(vessel_me_sfoc_df, "MELO SLOC [g/Kwh]").mean()
+        melo_consumption_day = numeric_series(vessel_me_sfoc_df, "MELO Consumption [ltr/day]").mean()
         cylo_sloc = numeric_series(vessel_me_sfoc_df, "CYLO SLOC [g/Kwh]").mean()
-        dg_sloc = numeric_series(vessel_me_sfoc_df, "DG SLOC [g/Kwh]").mean()
+        gelo_sloc = numeric_series(vessel_me_sfoc_df, "GELO SLOC [g/Kwh]").mean()
 
         rows.append(
             {
@@ -1649,9 +1657,9 @@ def to_kpi_excel_bytes(
                 "Average ME Load [%MCR]": format_percentage(me_load),
                 "Average SFOC [gr/Kwh]": format_value(sfoc, 2),
                 "Boiler Sum": format_value(boiler, 2),
-                "Average MELO SLOC [g/Kwh]": format_value(melo_sloc, 3),
+                "Average MELO Consumption [ltr/day]": format_value(melo_consumption_day, 3),
                 "Average CYLO SLOC [g/Kwh]": format_value(cylo_sloc, 3),
-                "Average DG SLOC [g/Kwh]": format_value(dg_sloc, 3),
+                "Average GELO SLOC [g/Kwh]": format_value(gelo_sloc, 3),
             }
         )
 
@@ -1689,7 +1697,7 @@ def to_kpi_excel_bytes(
         row += 1
         worksheet[f"A{row}"] = f"Average Calculated Slip: {slip_period[0].strftime('%d/%m/%Y')} to {slip_period[1].strftime('%d/%m/%Y')}"
         row += 1
-        worksheet[f"A{row}"] = f"Average ME Load / SFOC / SLOC: {me_sfoc_period[0].strftime('%d/%m/%Y')} to {me_sfoc_period[1].strftime('%d/%m/%Y')}"
+        worksheet[f"A{row}"] = f"Average ME Load / SFOC / Lub Oil: {me_sfoc_period[0].strftime('%d/%m/%Y')} to {me_sfoc_period[1].strftime('%d/%m/%Y')}"
         row += 1
         worksheet[f"A{row}"] = f"Boiler Sum: {boiler_period[0].strftime('%d/%m/%Y')} to {boiler_period[1].strftime('%d/%m/%Y')}"
         row += 2
@@ -1732,9 +1740,9 @@ def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.D
     me_load = numeric_series(me_sfoc_df, "ME Load [%MCR]").mean()
     sfoc = numeric_series(me_sfoc_df, "SFOC [gr/Kwh]").replace(0, pd.NA).mean()
     boiler = numeric_series(boiler_df, "Boiler Sum").sum(min_count=1)
-    melo_sloc = numeric_series(me_sfoc_df, "MELO SLOC [g/Kwh]").mean()
+    melo_consumption_day = numeric_series(me_sfoc_df, "MELO Consumption [ltr/day]").mean()
     cylo_sloc = numeric_series(me_sfoc_df, "CYLO SLOC [g/Kwh]").mean()
-    dg_sloc = numeric_series(me_sfoc_df, "DG SLOC [g/Kwh]").mean()
+    gelo_sloc = numeric_series(me_sfoc_df, "GELO SLOC [g/Kwh]").mean()
 
     cols = st.columns(4)
     cols[0].metric("Average Calculated Slip", format_percentage(slip))
@@ -1743,9 +1751,9 @@ def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.D
     cols[3].metric("Boiler Sum", format_value(boiler, 2))
 
     sloc_cols = st.columns(3)
-    sloc_cols[0].metric("Average MELO SLOC [g/Kwh]", format_value(melo_sloc, 2))
+    sloc_cols[0].metric("Average MELO Consumption [ltr/day]", format_value(melo_consumption_day, 2))
     sloc_cols[1].metric("Average CYLO SLOC [g/Kwh]", format_value(cylo_sloc, 2))
-    sloc_cols[2].metric("Average GELO SLOC [g/Kwh]", format_value(dg_sloc, 2))
+    sloc_cols[2].metric("Average GELO SLOC [g/Kwh]", format_value(gelo_sloc, 2))
 
 
 
@@ -2449,8 +2457,8 @@ def main() -> None:
         st.warning("No reports match the selected vessel/fleet selection.")
         st.stop()
 
-    with st.sidebar.expander("KPI Filters: Slip / ME Load / SFOC / SLOC", expanded=False):
-        st.caption("These filters affect Average Calculated Slip, Average ME Load, Average SFOC, and the SLOC KPIs.")
+    with st.sidebar.expander("KPI Filters: Slip / ME Load / SFOC / Lub Oil", expanded=False):
+        st.caption("These filters affect Average Calculated Slip, Average ME Load, Average SFOC, MELO Consumption, and the Lub Oil KPIs.")
         performance_filter_specs = render_excel_like_filters(
             dashboard_df,
             key_prefix="performance_kpi_filter",
@@ -2486,7 +2494,7 @@ def main() -> None:
         )
         me_sfoc_kpi_df, me_sfoc_start_date, me_sfoc_end_date = render_kpi_date_slicer(
             performance_kpi_base_df,
-            label="Average ME Load / SFOC / SLOC period",
+            label="Average ME Load / SFOC / Lub Oil period",
             key="me_load_sfoc_kpi_period_slicer",
         )
         boiler_kpi_df, boiler_start_date, boiler_end_date = render_kpi_date_slicer(
@@ -2525,7 +2533,7 @@ def main() -> None:
         ):
             st.caption(
                 f"Calculated Slip uses {len(slip_kpi_df):,} reports. "
-                f"ME Load / SFOC / SLOC uses {len(me_sfoc_kpi_df):,} reports. "
+                f"ME Load / SFOC / Lub Oil uses {len(me_sfoc_kpi_df):,} reports. "
                 f"Boiler Sum uses {len(boiler_kpi_df):,} reports."
             )
 
