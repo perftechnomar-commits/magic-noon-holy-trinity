@@ -1684,7 +1684,7 @@ def to_kpi_excel_bytes(
         worksheet["A1"] = report_title
         worksheet["A1"].font = worksheet["A1"].font.copy(bold=True, underline="single", size=14)
 
-        worksheet["A2"] = f"Period: {selected_start.strftime('%d/%m/%Y')} to {selected_end.strftime('%d/%m/%Y')}"
+        worksheet["A2"] = f"API Period: {selected_start.strftime('%d/%m/%Y')} to {selected_end.strftime('%d/%m/%Y')}"
         worksheet["A2"].font = worksheet["A2"].font.copy(italic=True)
 
         # Add a grouped KPI heading above the KPI value columns.
