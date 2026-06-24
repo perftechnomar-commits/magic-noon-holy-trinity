@@ -36,6 +36,7 @@ UI_DATE_INPUT_FORMAT = "DD/MM/YYYY"
 DISPLAY_DATETIME_FORMAT = "%d/%m/%Y %H:%M"
 API_FULL_START_DATE = date(2026, 1, 1)
 TABLE_PREVIEW_ROW_LIMIT = 500
+CALCULATION_SCHEMA_VERSION = "2026-06-24-melo-ltr-day-gelo-sloc"
 
 
 
@@ -2211,9 +2212,14 @@ def request_signature(
 
 
 def transform_signature(raw_signature: dict[str, Any]) -> dict[str, Any]:
+    schema_text = "|".join([
+        CALCULATION_SCHEMA_VERSION,
+        *VALUE_ALIASES.keys(),
+        *DISPLAY_COLUMNS,
+    ])
     return {
         **raw_signature,
-        "value_signature": sha256("|".join(VALUE_ALIASES.keys()).encode("utf-8")).hexdigest()[:12],
+        "value_signature": sha256(schema_text.encode("utf-8")).hexdigest()[:12],
     }
 
 
@@ -2223,12 +2229,17 @@ def view_signature(
     start_date: date,
     end_date: date,
 ) -> dict[str, Any]:
+    schema_text = "|".join([
+        CALCULATION_SCHEMA_VERSION,
+        *VALUE_ALIASES.keys(),
+        *DISPLAY_COLUMNS,
+    ])
     return {
         **raw_signature,
         "selected_vessels": tuple(selected_vessels),
         "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),
-        "value_signature": sha256("|".join(VALUE_ALIASES.keys()).encode("utf-8")).hexdigest()[:12],
+        "value_signature": sha256(schema_text.encode("utf-8")).hexdigest()[:12],
     }
 
 
