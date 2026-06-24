@@ -1948,23 +1948,21 @@ def energy_sum(df: pd.DataFrame, power_column: str) -> Any:
 
 def kpi_card_html(label: str, value: str, footnote: str = "", extra_class: str = "") -> str:
     footnote_html = f'<div class="kpi-footnote">{escape(footnote)}</div>' if footnote else ""
-    return f"""
-    <div class="kpi-card {escape(extra_class)}">
-        <div class="kpi-label">{escape(label)}</div>
-        <div class="kpi-value">{escape(value)}</div>
-        {footnote_html}
-    </div>
-    """
+    return (
+        f'<div class="kpi-card {escape(extra_class)}">'
+        f'<div class="kpi-label">{escape(label)}</div>'
+        f'<div class="kpi-value">{escape(value)}</div>'
+        f"{footnote_html}"
+        "</div>"
+    )
 
 
 def support_card_html(rows: list[tuple[str, str]]) -> str:
     rows_html = "\n".join(
-        f"""
-        <div class="support-row">
-            <div class="support-label">{escape(label)}</div>
-            <div class="support-value">{escape(value)}</div>
-        </div>
-        """
+        f'<div class="support-row">'
+        f'<div class="support-label">{escape(label)}</div>'
+        f'<div class="support-value">{escape(value)}</div>'
+        "</div>"
         for label, value in rows
     )
     return f'<div class="support-card">{rows_html}</div>'
@@ -1976,31 +1974,25 @@ def sloc_card_html(
     detail_rows: list[tuple[str, str]],
 ) -> str:
     detail_html = "\n".join(
-        f"""
-        <div class="sloc-detail-row">
-            <div class="sloc-dot"></div>
-            <div class="sloc-detail-label">{escape(detail_label)}</div>
-            <div class="sloc-detail-value">{escape(detail_value)}</div>
-        </div>
-        """
+        f'<div class="sloc-detail-row">'
+        '<div class="sloc-dot"></div>'
+        f'<div class="sloc-detail-label">{escape(detail_label)}</div>'
+        f'<div class="sloc-detail-value">{escape(detail_value)}</div>'
+        "</div>"
         for detail_label, detail_value in detail_rows
     )
-    return f"""
-    <div class="kpi-card sloc-card">
-        <div class="kpi-label">{escape(label)}</div>
-        <div class="kpi-value">{escape(value)}</div>
-        <div class="sloc-detail-panel">{detail_html}</div>
-    </div>
-    """
+    return (
+        '<div class="kpi-card sloc-card">'
+        f'<div class="kpi-label">{escape(label)}</div>'
+        f'<div class="kpi-value">{escape(value)}</div>'
+        f'<div class="sloc-detail-panel">{detail_html}</div>'
+        "</div>"
+    )
 
 
 def render_card_grid(cards: list[str], grid_class: str) -> None:
     st.markdown(
-        f"""
-        <div class="kpi-grid {escape(grid_class)}">
-            {''.join(cards)}
-        </div>
-        """,
+        f'<div class="kpi-grid {escape(grid_class)}">{"".join(cards)}</div>',
         unsafe_allow_html=True,
     )
 
