@@ -1658,9 +1658,9 @@ def to_kpi_excel_bytes(
                 "Average ME Load [%MCR]": format_percentage(me_load),
                 "Average SFOC [gr/Kwh]": format_value(sfoc, 2),
                 "Boiler Sum": format_value(boiler, 2),
-                "Average MELO Consumption [ltr/day]": format_value(melo_consumption_day, 3),
-                "Average CYLO SLOC [g/Kwh]": format_value(cylo_sloc, 3),
-                "Average GELO SLOC [g/Kwh]": format_value(gelo_sloc, 3),
+                "Average MELO Consumption [ltr/day]": format_value(melo_consumption_day, 2),
+                "Average CYLO SLOC [g/Kwh]": format_value(cylo_sloc, 2),
+                "Average GELO SLOC [g/Kwh]": format_value(gelo_sloc, 2),
             }
         )
 
