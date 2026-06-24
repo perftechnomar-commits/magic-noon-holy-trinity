@@ -1734,7 +1734,7 @@ def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.D
     boiler = numeric_series(boiler_df, "Boiler Sum").sum(min_count=1)
     melo_sloc = numeric_series(me_sfoc_df, "MELO SLOC [g/Kwh]").mean()
     cylo_sloc = numeric_series(me_sfoc_df, "CYLO SLOC [g/Kwh]").mean()
-    dg_sloc = numeric_series(me_sfoc_df, "DG SLOC [g/Kwh]").mean()
+    dg_sloc = numeric_series(me_sfoc_df, "GELO SLOC [g/Kwh]").mean()
 
     cols = st.columns(4)
     cols[0].metric("Average Calculated Slip", format_percentage(slip))
