@@ -2144,17 +2144,17 @@ def render_kpi_date_slicer(
     
     previous_value = st.session_state.get(key)
     if isinstance(previous_value, tuple) and len(previous_value) == 2:
-        previous_start, _previous_end = previous_value
+        previous_start, previous_end = previous_value
 
         # Keep the user's selected start date when changing vessel/fleet, but
         # always move the end date to the latest available report date in the
         # current dataset. The real user-controlled filtration is therefore
         # the beginning of the KPI period.
         selected_start = max(min(previous_start, max_date), min_date)
-        selected_end = max_date
+        selected_end = max(min(previous_end, max_date), min_date)
 
         if selected_start > selected_end:
-            selected_start = min_date
+            selected_start, selected_end = min_date, max_date
 
         st.session_state[key] = (selected_start, selected_end)
     else:
