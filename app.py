@@ -1536,7 +1536,7 @@ def make_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     for column in ["Calculated Slip", "ME Load [%MCR]"]:
         if column in display_df.columns:
             display_df[column] = pd.to_numeric(display_df[column], errors="coerce").map(
-                lambda value: "-" if pd.isna(value) else f"{value:.1%}"
+                lambda value: "-" if pd.isna(value) else f"{value:.2%}"
             )
     numeric_columns = [
         column for column in display_df.columns
@@ -1544,7 +1544,7 @@ def make_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     ]
     for column in numeric_columns:
         values = pd.to_numeric(display_df[column], errors="coerce")
-        display_df[column] = values.map(lambda value: "-" if pd.isna(value) else f"{value:,.3f}")
+        display_df[column] = values.map(lambda value: "-" if pd.isna(value) else f"{value:,.2f}")
     return display_df.fillna("-")
 
 
