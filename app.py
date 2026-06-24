@@ -181,7 +181,7 @@ DISPLAY_COLUMNS = [
     "GELO ROB [ltr]",
     "GELO Received [ltr]",
     "GELO Consumption [ltr]",
-    "DG SLOC [g/Kwh]",
+    "GELO SLOC [g/Kwh]",
 ]
 
 VESSEL_GROUPS = {
