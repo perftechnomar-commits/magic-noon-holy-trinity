@@ -2449,7 +2449,7 @@ def main() -> None:
         st.warning("No reports match the selected vessel/fleet selection.")
         st.stop()
 
-    with st.sidebar.expander("KPI Filters: Slip / ME Load / SFOC", expanded=False):
+    with st.sidebar.expander("KPI Filters: Slip / ME Load / SFOC / SLOC", expanded=False):
         st.caption("These filters affect Average Calculated Slip, Average ME Load, Average SFOC, and the SLOC KPIs.")
         performance_filter_specs = render_excel_like_filters(
             dashboard_df,
