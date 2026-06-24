@@ -1651,7 +1651,7 @@ def to_kpi_excel_bytes(
                 "Boiler Sum": format_value(boiler, 2),
                 "Average MELO SLOC [g/Kwh]": format_value(melo_sloc, 3),
                 "Average CYLO SLOC [g/Kwh]": format_value(cylo_sloc, 3),
-                "Average DG SLOC [g/Kwh]": format_value(dg_sloc, 3),
+                "Average GELO SLOC [g/Kwh]": format_value(dg_sloc, 3),
             }
         )
 
@@ -1745,7 +1745,7 @@ def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.D
     sloc_cols = st.columns(3)
     sloc_cols[0].metric("Average MELO SLOC [g/Kwh]", format_value(melo_sloc, 3))
     sloc_cols[1].metric("Average CYLO SLOC [g/Kwh]", format_value(cylo_sloc, 3))
-    sloc_cols[2].metric("Average DG SLOC [g/Kwh]", format_value(dg_sloc, 3))
+    sloc_cols[2].metric("Average GELO SLOC [g/Kwh]", format_value(dg_sloc, 3))
 
 
 
