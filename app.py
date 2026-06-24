@@ -1946,8 +1946,24 @@ def energy_sum(df: pd.DataFrame, power_column: str) -> Any:
     return energy.sum(min_count=1)
 
 
-def kpi_card_html(label: str, value: str, footnote: str = "", extra_class: str = "") -> str:
-    footnote_html = f'<div class="kpi-footnote">{escape(footnote)}</div>' if footnote else ""
+def kpi_card_html(
+    label: str,
+    value: str,
+    footnote: str | list[tuple[str, str]] = "",
+    extra_class: str = "",
+) -> str:
+    if isinstance(footnote, list):
+        footnote_html = "".join(
+            f'<div class="support-row">'
+            f'<div class="support-label">{escape(detail_label)}</div>'
+            f'<div class="support-value">{escape(detail_value)}</div>'
+            "</div>"
+            for detail_label, detail_value in footnote
+        )
+        footnote_html = f'<div class="sloc-detail-panel">{footnote_html}</div>' if footnote_html else ""
+    else:
+        footnote_html = f'<div class="kpi-footnote">{escape(footnote)}</div>' if footnote else ""
+
     return (
         f'<div class="kpi-card {escape(extra_class)}">'
         f'<div class="kpi-label">{escape(label)}</div>'
