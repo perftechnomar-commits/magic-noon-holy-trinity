@@ -2034,7 +2034,16 @@ def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.D
     cylo_total_g = pd.NA if pd.isna(cylo_total_ltr) else cylo_total_ltr * CYLO_DENSITY_KG_PER_LTR * 1000
     gelo_total_g = pd.NA if pd.isna(gelo_total_ltr) else gelo_total_ltr * GELO_DENSITY_KG_PER_LTR * 1000
 
-    
+    render_card_grid(
+        [
+            kpi_card_html("Average Calculated Slip", format_percentage(slip)),
+            kpi_card_html("Average ME Load [%MCR]", format_percentage(me_load)),
+            kpi_card_html("Average SFOC [gr/Kwh]", format_value(sfoc, 2)),
+            kpi_card_html("Boiler Sum", format_value(boiler, 2)),
+        ],
+        "kpi-grid-four",
+    )
+
     render_card_grid(
         [
             support_card_html([
