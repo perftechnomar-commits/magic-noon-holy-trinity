@@ -2036,32 +2036,38 @@ def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.D
 
     render_card_grid(
         [
-            kpi_card_html("Average Calculated Slip", format_percentage(slip)),
-            kpi_card_html("Average ME Load [%MCR]", format_percentage(me_load)),
-            kpi_card_html("Average SFOC [gr/Kwh]", format_value(sfoc, 2)),
-            kpi_card_html("Boiler Sum", format_value(boiler, 2)),
-        ],
-        "kpi-grid-four",
-    )
-
-    render_card_grid(
-        [
-            support_card_html([
-                ("Total Distance Over Ground", format_value(slip_distance_over_ground, 2, " nm")),
-                ("Total Engine Distance", format_value(slip_engine_distance, 2, " nm")),
-            ]),
-            support_card_html([
-                ("Total Running Hours", format_value(running_hours, 2, " hrs")),
-                ("Running Days", format_value(running_days, 2, " days")),
-            ]),
-            support_card_html([
-                ("Total Fuel Consumption (ME)", format_value(me_fuel_total, 2, " MT")),
-                ("Total Energy (Torque Meter)", format_value(torque_energy, 0, " kWh")),
-            ]),
-            support_card_html([
-                ("Total Fuel Consumption (Boiler)", format_value(boiler, 2, " MT")),
-                ("Total Boiler Hours", format_value(boiler_hours, 2, " hrs")),
-            ]),
+            kpi_card_html(
+                "Average Calculated Slip",
+                format_percentage(slip)),
+                [
+                    ("Total Distance Over Ground", format_value(slip_distance_over_ground, 2, " nm")),
+                    ("Total Engine Distance", format_value(slip_engine_distance, 2, " nm")),
+                ],
+            ),
+            kpi_card_html(
+                "Average ME Load [%MCR]",
+                format_percentage(me_load)),
+                [
+                    ("Total Running Hours", format_value(running_hours, 2, " hrs")),
+                    ("Running Days", format_value(running_days, 2, " days")),
+                ],
+            ),
+            kpi_card_html(
+                "Average SFOC [gr/Kwh]",
+                format_value(sfoc, 2)),
+                [
+                    ("Total Fuel Consumption (ME)", format_value(me_fuel_total, 2, " MT")),
+                    ("Total Energy (Torque Meter)", format_value(torque_energy, 0, " kWh")),
+                ],
+            ),
+            kpi_card_html(
+                "Boiler Sum",
+                format_value(boiler, 2)),
+                [
+                    ("Total Fuel Consumption (Boiler)", format_value(boiler, 2, " MT")),
+                    ("Total Boiler Hours", format_value(boiler_hours, 2, " hrs")),
+                ],
+            ),
         ],
         "kpi-grid-four",
     )
