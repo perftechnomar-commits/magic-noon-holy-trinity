@@ -258,9 +258,10 @@ def apply_custom_css() -> None:
         <style>
         :root {
             --bg: #050505;
-            --panel: #10100C;
-            --panel-soft: #19170F;
+            --panel: #0F0F0B;
+            --panel-soft: #18150C;
             --border: rgba(245, 200, 75, 0.24);
+            --border-strong: rgba(255, 216, 74, 0.70);
             --text-soft: #B8B29F;
             --cyan: #FFD84A;
             --green: #FFB000;
@@ -270,9 +271,9 @@ def apply_custom_css() -> None:
         .stApp {
             background:
                 __BACKGROUND_IMAGE_LAYER__
-                radial-gradient(circle at top left, rgba(255, 216, 74, 0.13), transparent 34rem),
-                radial-gradient(circle at top right, rgba(255, 176, 0, 0.10), transparent 30rem),
-                linear-gradient(180deg, rgba(255, 216, 74, 0.04), transparent 22rem),
+                radial-gradient(circle at 18% 10%, rgba(255, 216, 74, 0.11), transparent 31rem),
+                radial-gradient(circle at 86% 8%, rgba(255, 176, 0, 0.08), transparent 28rem),
+                linear-gradient(180deg, rgba(255, 216, 74, 0.035), transparent 19rem),
                 var(--bg);
             background-position: center center;
             background-size: cover;
@@ -343,13 +344,15 @@ def apply_custom_css() -> None:
         }
 
         .block-container {
-            padding-top: 3.2rem;
+            padding-top: 2.15rem;
             padding-bottom: 3rem;
-            max-width: 1280px;
+            max-width: 1240px;
         }
 
         section[data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #11100A 0%, #050505 100%);
+            background:
+                radial-gradient(circle at top left, rgba(255, 216, 74, 0.08), transparent 18rem),
+                linear-gradient(180deg, #121008 0%, #050505 100%);
             border-right: 1px solid var(--border);
         }
 
@@ -504,13 +507,13 @@ def apply_custom_css() -> None:
         [data-baseweb="tag"] svg { color: #FFF7CC !important; }
 
         .dashboard-hero {
-            padding: 1.8rem 2rem;
-            border: 1px solid var(--border);
-            border-radius: 24px;
+            padding: 1.35rem 1.55rem;
+            border: 1px solid rgba(255, 216, 74, 0.30);
+            border-radius: 8px;
             background: __HERO_BACKGROUND__;
             box-shadow: __HERO_BOX_SHADOW__;
             backdrop-filter: __HERO_BACKDROP_FILTER__;
-            margin-bottom: 1.4rem;
+            margin-bottom: 0.85rem;
         }
 
         .eyebrow {
@@ -523,7 +526,7 @@ def apply_custom_css() -> None:
         }
 
         .dashboard-title {
-            font-size: clamp(2.2rem, 4vw, 4rem);
+            font-size: clamp(2.05rem, 3vw, 3.1rem);
             line-height: 1.02;
             font-weight: 900;
             color: #FFFBEA;
@@ -539,10 +542,17 @@ def apply_custom_css() -> None:
         }
 
         .section-title {
-            font-size: 1.35rem;
+            font-size: 1.45rem;
             font-weight: 850;
             color: #FFFBEA;
-            margin: 1.6rem 0 0.75rem 0;
+            margin: 1.25rem 0 0.55rem 0;
+        }
+
+        .section-note {
+            color: var(--text-soft);
+            font-size: 0.92rem;
+            font-weight: 650;
+            margin: -0.15rem 0 1rem 0;
         }
 
         div[data-testid="stMetric"] {
@@ -555,6 +565,161 @@ def apply_custom_css() -> None:
             backdrop-filter: __METRIC_BACKDROP_FILTER__;
             min-height: 124px;
             overflow: hidden;
+        }
+
+        .kpi-grid {
+            display: grid;
+            gap: 1rem;
+            margin: 0.7rem 0 0.95rem 0;
+        }
+
+        .kpi-grid-four {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .kpi-grid-three {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .kpi-card {
+            position: relative;
+            min-height: 112px;
+            padding: 1.05rem 1.1rem;
+            border: 1px solid var(--border-strong);
+            border-radius: 8px;
+            background:
+                linear-gradient(135deg, rgba(255, 216, 74, 0.10), rgba(255, 176, 0, 0.035) 42%, rgba(5, 5, 5, 0.94)),
+                linear-gradient(180deg, rgba(25, 22, 12, 0.98), rgba(9, 9, 6, 0.98));
+            box-shadow: 0 18px 42px rgba(0,0,0,0.42), 0 0 24px rgba(255,176,0,0.08), inset 0 1px 0 rgba(255,216,74,0.16);
+            overflow: hidden;
+        }
+
+        .kpi-card::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(circle at 18% 12%, rgba(255,216,74,0.10), transparent 12rem);
+        }
+
+        .kpi-label {
+            position: relative;
+            color: #E8DDAF;
+            font-size: 0.82rem;
+            font-weight: 800;
+            line-height: 1.25;
+            margin-bottom: 0.42rem;
+        }
+
+        .kpi-value {
+            position: relative;
+            color: #FFFBEA;
+            font-size: clamp(1.9rem, 2.5vw, 2.7rem);
+            line-height: 1;
+            font-weight: 950;
+            letter-spacing: 0;
+            text-shadow: 0 3px 18px rgba(0,0,0,0.98);
+            overflow-wrap: anywhere;
+        }
+
+        .kpi-footnote {
+            position: relative;
+            color: #B8B29F;
+            font-size: 0.78rem;
+            font-weight: 650;
+            margin-top: 0.65rem;
+        }
+
+        .support-card {
+            min-height: 96px;
+            padding: 0.92rem 1rem;
+            border: 1px solid rgba(255, 216, 74, 0.18);
+            border-radius: 8px;
+            background: rgba(15, 14, 9, 0.82);
+            box-shadow: inset 0 1px 0 rgba(255,216,74,0.10);
+        }
+
+        .support-row {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: 0.16rem 0;
+        }
+
+        .support-label {
+            color: #B8B29F;
+            font-size: 0.79rem;
+            font-weight: 700;
+            line-height: 1.25;
+        }
+
+        .support-value {
+            color: #FFD84A;
+            font-size: 0.86rem;
+            font-weight: 850;
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .sloc-card {
+            min-height: 202px;
+            padding: 1.08rem;
+        }
+
+        .sloc-detail-panel {
+            position: relative;
+            margin-top: 1rem;
+            padding: 0.8rem 0.92rem;
+            border: 1px solid rgba(255, 216, 74, 0.18);
+            border-radius: 8px;
+            background: rgba(7, 7, 5, 0.46);
+        }
+
+        .sloc-detail-row {
+            display: grid;
+            grid-template-columns: 0.85rem 1fr auto;
+            gap: 0.55rem;
+            align-items: baseline;
+            padding: 0.25rem 0;
+        }
+
+        .sloc-dot {
+            width: 0.42rem;
+            height: 0.42rem;
+            border-radius: 99px;
+            background: #FFD84A;
+            box-shadow: 0 0 14px rgba(255, 216, 74, 0.65);
+            margin-top: 0.28rem;
+        }
+
+        .sloc-detail-label {
+            color: #FFD84A;
+            font-size: 0.80rem;
+            font-weight: 800;
+            line-height: 1.25;
+        }
+
+        .sloc-detail-value {
+            color: #FFFBEA;
+            font-size: 0.82rem;
+            font-weight: 780;
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 1100px) {
+            .kpi-grid-four,
+            .kpi-grid-three {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 760px) {
+            .kpi-grid-four,
+            .kpi-grid-three {
+                grid-template-columns: 1fr;
+            }
         }
 
         div[data-testid="stMetric"]::before {
@@ -607,7 +772,7 @@ def apply_custom_css() -> None:
         }
 
         .stDownloadButton button, .stButton button {
-            border-radius: 14px !important;
+            border-radius: 8px !important;
             border: 1px solid rgba(255, 216, 74, 0.45) !important;
             background: linear-gradient(135deg, rgba(255, 216, 74, 0.98), rgba(255, 176, 0, 0.86)) !important;
             color: #121008 !important;
@@ -1770,6 +1935,76 @@ def weighted_sloc_g_per_kwh(
     return consumption_ltr * density_kg_per_ltr * 1000 / energy_kwh
 
 
+def numeric_sum(df: pd.DataFrame, column: str) -> Any:
+    return numeric_series(df, column).sum(min_count=1)
+
+
+def energy_sum(df: pd.DataFrame, power_column: str) -> Any:
+    if df.empty or power_column not in df.columns:
+        return pd.NA
+    energy = numeric_series(df, power_column) * numeric_series(df, "LapTime")
+    return energy.sum(min_count=1)
+
+
+def kpi_card_html(label: str, value: str, footnote: str = "", extra_class: str = "") -> str:
+    footnote_html = f'<div class="kpi-footnote">{escape(footnote)}</div>' if footnote else ""
+    return f"""
+    <div class="kpi-card {escape(extra_class)}">
+        <div class="kpi-label">{escape(label)}</div>
+        <div class="kpi-value">{escape(value)}</div>
+        {footnote_html}
+    </div>
+    """
+
+
+def support_card_html(rows: list[tuple[str, str]]) -> str:
+    rows_html = "\n".join(
+        f"""
+        <div class="support-row">
+            <div class="support-label">{escape(label)}</div>
+            <div class="support-value">{escape(value)}</div>
+        </div>
+        """
+        for label, value in rows
+    )
+    return f'<div class="support-card">{rows_html}</div>'
+
+
+def sloc_card_html(
+    label: str,
+    value: str,
+    detail_rows: list[tuple[str, str]],
+) -> str:
+    detail_html = "\n".join(
+        f"""
+        <div class="sloc-detail-row">
+            <div class="sloc-dot"></div>
+            <div class="sloc-detail-label">{escape(detail_label)}</div>
+            <div class="sloc-detail-value">{escape(detail_value)}</div>
+        </div>
+        """
+        for detail_label, detail_value in detail_rows
+    )
+    return f"""
+    <div class="kpi-card sloc-card">
+        <div class="kpi-label">{escape(label)}</div>
+        <div class="kpi-value">{escape(value)}</div>
+        <div class="sloc-detail-panel">{detail_html}</div>
+    </div>
+    """
+
+
+def render_card_grid(cards: list[str], grid_class: str) -> None:
+    st.markdown(
+        f"""
+        <div class="kpi-grid {escape(grid_class)}">
+            {''.join(cards)}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.DataFrame) -> None:
     slip = numeric_series(slip_df, "Calculated Slip").mean()
     me_load = numeric_series(me_sfoc_df, "ME Load [%MCR]").mean()
@@ -1789,16 +2024,88 @@ def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.D
         GELO_DENSITY_KG_PER_LTR,
     )
 
-    cols = st.columns(4)
-    cols[0].metric("Average Calculated Slip", format_percentage(slip))
-    cols[1].metric("Average ME Load [%MCR]", format_percentage(me_load))
-    cols[2].metric("Average SFOC [gr/Kwh]", format_value(sfoc, 2))
-    cols[3].metric("Boiler Sum", format_value(boiler, 2))
+    running_hours = numeric_sum(me_sfoc_df, "Steaming Time Since Last Report [hh:mm]")
+    if pd.isna(running_hours):
+        running_hours = numeric_sum(me_sfoc_df, "LapTime")
+    running_days = pd.NA if pd.isna(running_hours) else running_hours / 24
+    slip_engine_distance = numeric_sum(slip_df, "Engine Distance [nm]")
+    slip_distance_over_ground = numeric_sum(slip_df, "Distance Over Ground [nm]")
+    me_fuel_total = sum_numeric_columns(me_sfoc_df, ME_FUEL_COLUMNS).sum(min_count=1)
+    boiler_hours = numeric_sum(boiler_df, "Steaming Time Since Last Report [hh:mm]")
+    if pd.isna(boiler_hours):
+        boiler_hours = numeric_sum(boiler_df, "LapTime")
+    torque_energy = energy_sum(me_sfoc_df, "Power from Torque Meter [kW]")
+    dg_energy = energy_sum(me_sfoc_df, "Total DG Power [kW]")
+    melo_total = numeric_sum(me_sfoc_df, "MELO Consumption [ltr]")
+    cylo_total_ltr = numeric_sum(me_sfoc_df, "Cylinder Oil Consumption [ltr]")
+    gelo_total_ltr = numeric_sum(me_sfoc_df, "GELO Consumption [ltr]")
+    cylo_total_g = pd.NA if pd.isna(cylo_total_ltr) else cylo_total_ltr * CYLO_DENSITY_KG_PER_LTR * 1000
+    gelo_total_g = pd.NA if pd.isna(gelo_total_ltr) else gelo_total_ltr * GELO_DENSITY_KG_PER_LTR * 1000
 
-    sloc_cols = st.columns(3)
-    sloc_cols[0].metric("MELO Consumption [ltr/running day]", format_value(melo_consumption_day, 2))
-    sloc_cols[1].metric("CYLO SLOC [g/Kwh]", format_value(cylo_sloc, 2))
-    sloc_cols[2].metric("GELO SLOC [g/Kwh]", format_value(gelo_sloc, 2))
+    render_card_grid(
+        [
+            kpi_card_html("Average Calculated Slip", format_percentage(slip), "Slip period"),
+            kpi_card_html("Average ME Load [%MCR]", format_percentage(me_load), "ME/SFOC period"),
+            kpi_card_html("Average SFOC [gr/Kwh]", format_value(sfoc, 2), "ME/SFOC period"),
+            kpi_card_html("Boiler Sum", format_value(boiler, 2), "Boiler period"),
+        ],
+        "kpi-grid-four",
+    )
+
+    render_card_grid(
+        [
+            support_card_html([
+                ("Total Distance Over Ground", format_value(slip_distance_over_ground, 2, " nm")),
+                ("Total Engine Distance", format_value(slip_engine_distance, 2, " nm")),
+            ]),
+            support_card_html([
+                ("Total Running Hours", format_value(running_hours, 2, " hrs")),
+                ("Running Days", format_value(running_days, 2, " days")),
+            ]),
+            support_card_html([
+                ("Total Fuel Consumption (ME)", format_value(me_fuel_total, 2, " MT")),
+                ("Total Energy (Torque Meter)", format_value(torque_energy, 0, " kWh")),
+            ]),
+            support_card_html([
+                ("Total Fuel Consumption (Boiler)", format_value(boiler, 2, " MT")),
+                ("Total Boiler Hours", format_value(boiler_hours, 2, " hrs")),
+            ]),
+        ],
+        "kpi-grid-four",
+    )
+
+    render_card_grid(
+        [
+            sloc_card_html(
+                "MELO Consumption [ltr/running day]",
+                format_value(melo_consumption_day, 2),
+                [
+                    ("Total MELO Consumption", format_value(melo_total, 2, " ltr")),
+                    ("Total Running Hours", format_value(running_hours, 2, " hrs")),
+                    ("Running Days", format_value(running_days, 2, " days")),
+                ],
+            ),
+            sloc_card_html(
+                "CYLO SLOC [g/Kwh]",
+                format_value(cylo_sloc, 2),
+                [
+                    ("Total CYLO Consumption", format_value(cylo_total_ltr, 2, " ltr")),
+                    ("Total Energy (Torque Meter)", format_value(torque_energy, 0, " kWh")),
+                    ("Total Consumption", format_value(cylo_total_g, 2, " g")),
+                ],
+            ),
+            sloc_card_html(
+                "GELO SLOC [g/Kwh]",
+                format_value(gelo_sloc, 2),
+                [
+                    ("Total GELO Consumption", format_value(gelo_total_ltr, 2, " ltr")),
+                    ("Total Energy (DG Power)", format_value(dg_energy, 0, " kWh")),
+                    ("Total Consumption", format_value(gelo_total_g, 2, " g")),
+                ],
+            ),
+        ],
+        "kpi-grid-three",
+    )
 
 
 
@@ -2538,10 +2845,8 @@ def main() -> None:
                                                        performance_filter_specs)
     boiler_kpi_base_df = apply_excel_like_filters(dashboard_df, boiler_filter_specs)
 
-    with tab_dashboard:
-        st.markdown('<div class="section-title">Fleet KPIs</div>', unsafe_allow_html=True)
-        st.caption("Use the three KPI period filters below to control each KPI calculation independently.")
-
+    with st.sidebar.expander("KPI Periods", expanded=True):
+        st.caption("These periods control the KPI cards without changing the loaded dataset.")
         slip_kpi_df, slip_start_date, slip_end_date = render_kpi_date_slicer(
             performance_kpi_base_df,
             label="Average Calculated Slip period",
@@ -2557,7 +2862,13 @@ def main() -> None:
             label="Boiler Sum period",
             key="boiler_sum_kpi_period_slicer",
         )
-    
+
+    with tab_dashboard:
+        st.markdown('<div class="section-title">Fleet KPIs</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="section-note">Weighted averages use total consumption and total running hours or total energy, with KPI periods controlled from the sidebar.</div>',
+            unsafe_allow_html=True,
+        )
         render_kpis(slip_kpi_df, me_sfoc_kpi_df, boiler_kpi_df)
 
         kpi_excel_bytes = to_kpi_excel_bytes(
