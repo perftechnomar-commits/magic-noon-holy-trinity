@@ -36,7 +36,7 @@ UI_DATE_INPUT_FORMAT = "DD/MM/YYYY"
 DISPLAY_DATETIME_FORMAT = "%d/%m/%Y %H:%M"
 API_FULL_START_DATE = date(2026, 1, 1)
 TABLE_PREVIEW_ROW_LIMIT = 500
-CALCULATION_SCHEMA_VERSION = "2026-06-24-weighted-lub-oil-kpis"
+CALCULATION_SCHEMA_VERSION = "2026-06-24-gelo-ltr-running-day-no-dg-hours"
 
 
 
@@ -182,7 +182,7 @@ DISPLAY_COLUMNS = [
     "GELO ROB [ltr]",
     "GELO Received [ltr]",
     "GELO Consumption [ltr]",
-    "GELO SLOC [g/Kwh]",
+    "GELO Consumption [ltr/day]",
 ]
 
 VESSEL_GROUPS = {
@@ -1650,11 +1650,9 @@ def add_calculations(report_df: pd.DataFrame) -> pd.DataFrame:
         lap_time,
         CYLO_DENSITY_KG_PER_LTR,
     ).round(3)
-    df["GELO SLOC [g/Kwh]"] = calculate_sloc_g_per_kwh(
+    df["GELO Consumption [ltr/day]"] = calculate_consumption_ltr_per_day(
         df["GELO Consumption [ltr]"],
-        dg_power,
-        lap_time,
-        GELO_DENSITY_KG_PER_LTR,
+        steaming_hours,
     ).round(3)
 
     return df
@@ -1818,12 +1816,7 @@ def to_kpi_excel_bytes(
             "Power from Torque Meter [kW]",
             CYLO_DENSITY_KG_PER_LTR,
         )
-        gelo_sloc = weighted_sloc_g_per_kwh(
-            vessel_me_sfoc_df,
-            "GELO Consumption [ltr]",
-            "Total DG Power [kW]",
-            GELO_DENSITY_KG_PER_LTR,
-        )
+        gelo_consumption_day = weighted_gelo_ltr_per_running_day(vessel_me_sfoc_df)
 
         rows.append(
             {
@@ -1835,7 +1828,7 @@ def to_kpi_excel_bytes(
                 "Boiler Sum": format_value(boiler, 2),
                 "MELO Consumption [ltr/running day]": format_value(melo_consumption_day, 2),
                 "CYLO SLOC [g/Kwh]": format_value(cylo_sloc, 2),
-                "GELO SLOC [g/Kwh]": format_value(gelo_sloc, 2),
+                "GELO Consumption [ltr/running day]": format_value(gelo_consumption_day, 2),
             }
         )
 
@@ -1919,6 +1912,14 @@ def weighted_melo_ltr_per_running_day(df: pd.DataFrame) -> Any:
     return consumption / running_hours * 24
 
 
+def weighted_gelo_ltr_per_running_day(df: pd.DataFrame) -> Any:
+    consumption = numeric_series(df, "GELO Consumption [ltr]").sum(min_count=1)
+    running_hours = numeric_series(df, "Steaming Time Since Last Report [hh:mm]").sum(min_count=1)
+    if pd.isna(consumption) or pd.isna(running_hours) or running_hours <= 0:
+        return pd.NA
+    return consumption / running_hours * 24
+
+
 def weighted_sloc_g_per_kwh(
     df: pd.DataFrame,
     consumption_column: str,
@@ -1946,24 +1947,18 @@ def energy_sum(df: pd.DataFrame, power_column: str) -> Any:
     return energy.sum(min_count=1)
 
 
-def kpi_card_html(
-    label: str,
-    value: str,
-    footnote: str | list[tuple[str, str]] = "",
-    extra_class: str = "",
-) -> str:
+def kpi_card_html(label: str, value: str, footnote: Any = "", extra_class: str = "") -> str:
     if isinstance(footnote, list):
-        footnote_html = "".join(
+        detail_html = "\n".join(
             f'<div class="support-row">'
-            f'<div class="support-label">{escape(detail_label)}</div>'
-            f'<div class="support-value">{escape(detail_value)}</div>'
+            f'<div class="support-label">{escape(str(detail_label))}</div>'
+            f'<div class="support-value">{escape(str(detail_value))}</div>'
             "</div>"
             for detail_label, detail_value in footnote
         )
-        footnote_html = f'<div class="sloc-detail-panel">{footnote_html}</div>' if footnote_html else ""
+        footnote_html = f'<div class="sloc-detail-panel">{detail_html}</div>'
     else:
-        footnote_html = f'<div class="kpi-footnote">{escape(footnote)}</div>' if footnote else ""
-
+        footnote_html = f'<div class="kpi-footnote">{escape(str(footnote))}</div>' if footnote else ""
     return (
         f'<div class="kpi-card {escape(extra_class)}">'
         f'<div class="kpi-label">{escape(label)}</div>'
@@ -2025,12 +2020,7 @@ def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.D
         "Power from Torque Meter [kW]",
         CYLO_DENSITY_KG_PER_LTR,
     )
-    gelo_sloc = weighted_sloc_g_per_kwh(
-        me_sfoc_df,
-        "GELO Consumption [ltr]",
-        "Total DG Power [kW]",
-        GELO_DENSITY_KG_PER_LTR,
-    )
+    gelo_consumption_day = weighted_gelo_ltr_per_running_day(me_sfoc_df)
 
     running_hours = numeric_sum(me_sfoc_df, "Steaming Time Since Last Report [hh:mm]")
     if pd.isna(running_hours):
@@ -2043,12 +2033,12 @@ def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.D
     if pd.isna(boiler_hours):
         boiler_hours = numeric_sum(boiler_df, "LapTime")
     torque_energy = energy_sum(me_sfoc_df, "Power from Torque Meter [kW]")
-    dg_energy = energy_sum(me_sfoc_df, "Total DG Power [kW]")
+    gelo_running_hours = running_hours
+    gelo_running_days = running_days
     melo_total = numeric_sum(me_sfoc_df, "MELO Consumption [ltr]")
     cylo_total_ltr = numeric_sum(me_sfoc_df, "Cylinder Oil Consumption [ltr]")
     gelo_total_ltr = numeric_sum(me_sfoc_df, "GELO Consumption [ltr]")
     cylo_total_g = pd.NA if pd.isna(cylo_total_ltr) else cylo_total_ltr * CYLO_DENSITY_KG_PER_LTR * 1000
-    gelo_total_g = pd.NA if pd.isna(gelo_total_ltr) else gelo_total_ltr * GELO_DENSITY_KG_PER_LTR * 1000
 
     render_card_grid(
         [
@@ -2109,12 +2099,12 @@ def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.D
                 ],
             ),
             sloc_card_html(
-                "GELO SLOC [g/Kwh]",
-                format_value(gelo_sloc, 2),
+                "GELO Consumption [ltr/running day]",
+                format_value(gelo_consumption_day, 2),
                 [
                     ("Total GELO Consumption", format_value(gelo_total_ltr, 2, " ltr")),
-                    ("Total Energy (DG Power)", format_value(dg_energy, 0, " kWh")),
-                    ("Total Consumption", format_value(gelo_total_g, 2, " g")),
+                    ("Total Running Hours", format_value(gelo_running_hours, 2, " hrs")),
+                    ("Running Days", format_value(gelo_running_days, 2, " days")),
                 ],
             ),
         ],
