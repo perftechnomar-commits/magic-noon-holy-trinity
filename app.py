@@ -36,7 +36,7 @@ UI_DATE_INPUT_FORMAT = "DD/MM/YYYY"
 DISPLAY_DATETIME_FORMAT = "%d/%m/%Y %H:%M"
 API_FULL_START_DATE = date(2026, 1, 1)
 TABLE_PREVIEW_ROW_LIMIT = 500
-CALCULATION_SCHEMA_VERSION = "2026-06-25-dg-running-hours-table-slider"
+CALCULATION_SCHEMA_VERSION = "2026-06-25-dg-running-hours-table-slider-v3"
 
 
 
@@ -89,24 +89,32 @@ VALUE_ALIASES = {
         "DG 1 Running Hours [hh:mm]",
         "DG1 Running Hours",
         "DG 1 Running Hours",
+        "Diesel Generator 1 Running Hours [hh:mm]",
+        "Diesel Generator 1 Running Hours",
     ],
     "DG2 Running Hours [hh:mm]": [
         "DG2 Running Hours [hh:mm]",
         "DG 2 Running Hours [hh:mm]",
         "DG2 Running Hours",
         "DG 2 Running Hours",
+        "Diesel Generator 2 Running Hours [hh:mm]",
+        "Diesel Generator 2 Running Hours",
     ],
     "DG3 Running Hours [hh:mm]": [
         "DG3 Running Hours [hh:mm]",
         "DG 3 Running Hours [hh:mm]",
         "DG3 Running Hours",
         "DG 3 Running Hours",
+        "Diesel Generator 3 Running Hours [hh:mm]",
+        "Diesel Generator 3 Running Hours",
     ],
     "DG4 Running Hours [hh:mm]": [
         "DG4 Running Hours [hh:mm]",
         "DG 4 Running Hours [hh:mm]",
         "DG4 Running Hours",
         "DG 4 Running Hours",
+        "Diesel Generator 4 Running Hours [hh:mm]",
+        "Diesel Generator 4 Running Hours",
     ],
     "MELO ROB [ltr]": ["MELO ROB [ltr]"],
     "MELO Received [ltr]": ["MELO Received [ltr]"],
@@ -1679,8 +1687,8 @@ def add_calculations(report_df: pd.DataFrame) -> pd.DataFrame:
     ).round(3)
 
     dg_power = pd.to_numeric(df.get("Total DG Power [kW]"), errors="coerce")
-    steaming_hours = pd.to_numeric(df.get("Steaming Time Since Last Report [hh:mm]"), errors="coerce")
     df["Total DG Running Hours [hh:mm]"] = sum_numeric_columns(df, DG_RUNNING_HOUR_COLUMNS).round(3)
+    steaming_hours = pd.to_numeric(df.get("Steaming Time Since Last Report [hh:mm]"), errors="coerce")
     df["MELO Consumption [ltr/day]"] = calculate_consumption_ltr_per_day(
         df["MELO Consumption [ltr]"],
         steaming_hours,
@@ -1962,10 +1970,10 @@ def weighted_melo_ltr_per_running_day(df: pd.DataFrame) -> Any:
 
 def weighted_gelo_ltr_per_running_day(df: pd.DataFrame) -> Any:
     consumption = numeric_series(df, "GELO Consumption [ltr]").sum(min_count=1)
-    running_hours = numeric_series(df, "Total DG Running Hours [hh:mm]").sum(min_count=1)
-    if pd.isna(consumption) or pd.isna(running_hours) or running_hours <= 0:
+    dg_running_hours = numeric_series(df, "Total DG Running Hours [hh:mm]").sum(min_count=1)
+    if pd.isna(consumption) or pd.isna(dg_running_hours) or dg_running_hours <= 0:
         return pd.NA
-    return consumption / running_hours * 24
+    return consumption / dg_running_hours * 24
 
 
 def weighted_sloc_g_per_kwh(
@@ -2616,32 +2624,33 @@ def render_table_date_slicer(
     label: str = "Filtered Report Table period",
     key: str = "filtered_report_table_period_slicer",
 ) -> tuple[pd.DataFrame, date, date]:
-    """Separate date slicer used only for the dashboard preview table."""
     if df.empty or "StartDateTimeGMT" not in df.columns:
         today = date.today()
-        st.caption(f"{label}: no available reports.")
         return df, today, today
 
     dates = pd.to_datetime(df["StartDateTimeGMT"], errors="coerce", utc=True).dt.date.dropna()
     if dates.empty:
         today = date.today()
-        st.caption(f"{label}: no valid report dates.")
         return df, today, today
 
     min_date = max(dates.min(), API_FULL_START_DATE)
     max_date = min(dates.max(), date.today())
 
-    st.caption("This period controls only the table below. KPI cards use the KPI Periods in the sidebar.")
+    st.markdown('<div class="section-title">Filtered Report Table Period</div>', unsafe_allow_html=True)
+    st.caption("This period controls only the table below. KPI cards use the KPI Periods sliders in the sidebar.")
 
     if min_date >= max_date:
         selected_start, selected_end = min_date, max_date
         st.caption(f"Available period: {selected_start.strftime('%d/%m/%Y')}")
     else:
+        default_value = st.session_state.get(key)
+        if not (isinstance(default_value, tuple) and len(default_value) == 2):
+            default_value = (min_date, max_date)
         selected_start, selected_end = st.slider(
             label,
             min_value=min_date,
             max_value=max_date,
-            value=(min_date, max_date),
+            value=default_value,
             format="DD/MM/YYYY",
             key=key,
             label_visibility="collapsed",
@@ -2649,8 +2658,8 @@ def render_table_date_slicer(
 
     filtered_df = filter_dataframe_by_date_range(df, selected_start, selected_end)
     st.caption(
-        f"Table period: {selected_start.strftime('%d/%m/%Y')} to {selected_end.strftime('%d/%m/%Y')} "
-        f"({len(filtered_df):,} of {len(df):,} selected-vessel reports)"
+        f"Selected table period: {selected_start.strftime('%d/%m/%Y')} to {selected_end.strftime('%d/%m/%Y')} "
+        f"({len(filtered_df):,} of {len(df):,} reports)"
     )
     return filtered_df, selected_start, selected_end
 
@@ -3016,8 +3025,8 @@ def main() -> None:
         st.markdown('<div class="section-title">Latest Report By Vessel</div>', unsafe_allow_html=True)
         st.dataframe(make_display_dataframe(latest_by_vessel(dashboard_df)), use_container_width=True, hide_index=True)
 
-        st.markdown('<div class="section-title">Filtered Report Table</div>', unsafe_allow_html=True)
         table_df, table_start_date, table_end_date = render_table_date_slicer(dashboard_df)
+        st.markdown('<div class="section-title">Filtered Report Table</div>', unsafe_allow_html=True)
         sorted_dashboard_df = table_df.sort_values("EndDateTimeGMT", ascending=False)
         preview_dashboard_df = sorted_dashboard_df.head(TABLE_PREVIEW_ROW_LIMIT)
         display_df = make_display_dataframe(preview_dashboard_df)
