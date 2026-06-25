@@ -2637,15 +2637,21 @@ def render_table_date_slicer(
     min_date = max(dates.min(), API_FULL_START_DATE)
     max_date = min(dates.max(), date.today())
 
-    st.markdown('<div class="section-title">Filtered Report Table Period</div>', unsafe_allow_html=True)
-    st.caption("This period controls only the table below. KPI cards use the KPI Periods sliders in the sidebar.")
+    st.caption(label)
 
     if min_date >= max_date:
         selected_start, selected_end = min_date, max_date
         st.caption(f"Available period: {selected_start.strftime('%d/%m/%Y')}")
     else:
         default_value = st.session_state.get(key)
-        if not (isinstance(default_value, tuple) and len(default_value) == 2):
+        if isinstance(default_value, tuple) and len(default_value) == 2:
+            default_start, default_end = default_value
+            default_start = max(min(default_start, max_date), min_date)
+            default_end = max(min(default_end, max_date), min_date)
+            if default_start > default_end:
+                default_start, default_end = min_date, max_date
+            default_value = (default_start, default_end)
+        else:
             default_value = (min_date, max_date)
         selected_start, selected_end = st.slider(
             label,
@@ -2996,6 +3002,23 @@ def main() -> None:
             key="boiler_sum_kpi_period_slicer",
         )
 
+    with st.sidebar.expander("Filtered Report Table Filters", expanded=False):
+        st.caption("These controls affect only the Filtered Report Table below. They do not change KPI cards or Latest Report By Vessel.")
+        table_period_df, table_start_date, table_end_date = render_table_date_slicer(
+            dashboard_df,
+            label="Table period",
+            key="filtered_report_table_period_slicer",
+        )
+        table_filter_specs = render_excel_like_filters(
+            table_period_df,
+            key_prefix="filtered_report_table_filter",
+            label="Columns to filter",
+        )
+        table_df = apply_excel_like_filters(table_period_df, table_filter_specs)
+        st.caption(
+            f"Table rows after filters: {len(table_df):,} of {len(dashboard_df):,} selected-vessel reports."
+        )
+
     with tab_dashboard:
         st.markdown('<div class="section-title">Fleet KPIs</div>', unsafe_allow_html=True)
         st.markdown(
@@ -3039,8 +3062,11 @@ def main() -> None:
         st.markdown('<div class="section-title">Latest Report By Vessel</div>', unsafe_allow_html=True)
         st.dataframe(make_display_dataframe(latest_by_vessel(dashboard_df)), use_container_width=True, hide_index=True)
 
-        table_df, table_start_date, table_end_date = render_table_date_slicer(dashboard_df)
         st.markdown('<div class="section-title">Filtered Report Table</div>', unsafe_allow_html=True)
+        st.caption(
+            f"Table period: {table_start_date.strftime('%d/%m/%Y')} to {table_end_date.strftime('%d/%m/%Y')} "
+            f"({len(table_df):,} rows after table filters)."
+        )
         sorted_dashboard_df = table_df.sort_values("EndDateTimeGMT", ascending=False)
         preview_dashboard_df = sorted_dashboard_df.head(TABLE_PREVIEW_ROW_LIMIT)
         display_df = make_display_dataframe(preview_dashboard_df)
