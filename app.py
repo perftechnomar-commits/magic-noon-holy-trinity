@@ -36,7 +36,7 @@ UI_DATE_INPUT_FORMAT = "DD/MM/YYYY"
 DISPLAY_DATETIME_FORMAT = "%d/%m/%Y %H:%M"
 API_FULL_START_DATE = date(2026, 1, 1)
 TABLE_PREVIEW_ROW_LIMIT = 500
-CALCULATION_SCHEMA_VERSION = "2026-06-24-label-unit-detail-order-v2"
+CALCULATION_SCHEMA_VERSION = "2026-06-25-dg-running-hours-table-slider"
 
 
 
@@ -83,6 +83,30 @@ VALUE_ALIASES = {
         "Total DG Power [kW]",
         "Total DG Power [kW] (kW)",
         "Total Daily Average Power [kW]",
+    ],
+    "DG1 Running Hours [hh:mm]": [
+        "DG1 Running Hours [hh:mm]",
+        "DG 1 Running Hours [hh:mm]",
+        "DG1 Running Hours",
+        "DG 1 Running Hours",
+    ],
+    "DG2 Running Hours [hh:mm]": [
+        "DG2 Running Hours [hh:mm]",
+        "DG 2 Running Hours [hh:mm]",
+        "DG2 Running Hours",
+        "DG 2 Running Hours",
+    ],
+    "DG3 Running Hours [hh:mm]": [
+        "DG3 Running Hours [hh:mm]",
+        "DG 3 Running Hours [hh:mm]",
+        "DG3 Running Hours",
+        "DG 3 Running Hours",
+    ],
+    "DG4 Running Hours [hh:mm]": [
+        "DG4 Running Hours [hh:mm]",
+        "DG 4 Running Hours [hh:mm]",
+        "DG4 Running Hours",
+        "DG 4 Running Hours",
     ],
     "MELO ROB [ltr]": ["MELO ROB [ltr]"],
     "MELO Received [ltr]": ["MELO Received [ltr]"],
@@ -152,6 +176,13 @@ GELO_COLUMNS = [
     "GELO Received [ltr]",
 ]
 
+DG_RUNNING_HOUR_COLUMNS = [
+    "DG1 Running Hours [hh:mm]",
+    "DG2 Running Hours [hh:mm]",
+    "DG3 Running Hours [hh:mm]",
+    "DG4 Running Hours [hh:mm]",
+]
+
 DISPLAY_COLUMNS = [
     "ShipName",
     "ReportType",
@@ -169,6 +200,11 @@ DISPLAY_COLUMNS = [
     "SFOC [g/kWh]",
     "Boiler Sum",
     "Total DG Power [kW]",
+    "DG1 Running Hours [hh:mm]",
+    "DG2 Running Hours [hh:mm]",
+    "DG3 Running Hours [hh:mm]",
+    "DG4 Running Hours [hh:mm]",
+    "Total DG Running Hours [hh:mm]",
     "MELO ROB [ltr]",
     "MELO Received [ltr]",
     "MELO Consumption [ltr]",
@@ -1644,6 +1680,7 @@ def add_calculations(report_df: pd.DataFrame) -> pd.DataFrame:
 
     dg_power = pd.to_numeric(df.get("Total DG Power [kW]"), errors="coerce")
     steaming_hours = pd.to_numeric(df.get("Steaming Time Since Last Report [hh:mm]"), errors="coerce")
+    df["Total DG Running Hours [hh:mm]"] = sum_numeric_columns(df, DG_RUNNING_HOUR_COLUMNS).round(3)
     df["MELO Consumption [ltr/day]"] = calculate_consumption_ltr_per_day(
         df["MELO Consumption [ltr]"],
         steaming_hours,
@@ -1656,7 +1693,7 @@ def add_calculations(report_df: pd.DataFrame) -> pd.DataFrame:
     ).round(3)
     df["GELO Consumption [ltr/day]"] = calculate_consumption_ltr_per_day(
         df["GELO Consumption [ltr]"],
-        steaming_hours,
+        df["Total DG Running Hours [hh:mm]"],
     ).round(3)
 
     return df
@@ -1832,7 +1869,7 @@ def to_kpi_excel_bytes(
                 "Boiler Sum": format_value(boiler, 2),
                 "MELO Consumption [ltr/running day]": format_value(melo_consumption_day, 2),
                 "CYLO SLOC [g/kWh]": format_value(cylo_sloc, 2),
-                "GELO Consumption [ltr/running day]": format_value(gelo_consumption_day, 2),
+                "GELO Consumption [ltr/DG running day]": format_value(gelo_consumption_day, 2),
             }
         )
 
@@ -1925,7 +1962,7 @@ def weighted_melo_ltr_per_running_day(df: pd.DataFrame) -> Any:
 
 def weighted_gelo_ltr_per_running_day(df: pd.DataFrame) -> Any:
     consumption = numeric_series(df, "GELO Consumption [ltr]").sum(min_count=1)
-    running_hours = numeric_series(df, "Steaming Time Since Last Report [hh:mm]").sum(min_count=1)
+    running_hours = numeric_series(df, "Total DG Running Hours [hh:mm]").sum(min_count=1)
     if pd.isna(consumption) or pd.isna(running_hours) or running_hours <= 0:
         return pd.NA
     return consumption / running_hours * 24
@@ -2045,8 +2082,8 @@ def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.D
     if pd.isna(boiler_hours):
         boiler_hours = numeric_sum(boiler_df, "LapTime")
     torque_energy = energy_sum(me_sfoc_df, "Power from Torque Meter [kW]")
-    gelo_running_hours = running_hours
-    gelo_running_days = running_days
+    gelo_running_hours = numeric_sum(me_sfoc_df, "Total DG Running Hours [hh:mm]")
+    gelo_running_days = pd.NA if pd.isna(gelo_running_hours) else gelo_running_hours / 24
     melo_total = numeric_sum(me_sfoc_df, "MELO Consumption [ltr]")
     cylo_total_ltr = numeric_sum(me_sfoc_df, "Cylinder Oil Consumption [ltr]")
     gelo_total_ltr = numeric_sum(me_sfoc_df, "GELO Consumption [ltr]")
@@ -2112,12 +2149,12 @@ def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.D
                 ],
             ),
             sloc_card_html(
-                "GELO Consumption [ltr/running day]",
+                "GELO Consumption [ltr/DG running day]",
                 format_value(gelo_consumption_day, 2),
                 [
                     ("Total GELO Consumption", format_value(gelo_total_ltr, 2, " ltr")),
-                    ("Total Running Hours", format_value(gelo_running_hours, 2, " hrs")),
-                    ("Running Days", format_value(gelo_running_days, 2, " days")),
+                    ("Total DG Running Hours", format_value(gelo_running_hours, 2, " hrs")),
+                    ("DG Running Days", format_value(gelo_running_days, 2, " days")),
                 ],
             ),
         ],
@@ -2572,6 +2609,51 @@ def render_kpi_date_slicer(
     return filtered_df, selected_start, selected_end
 
 
+
+def render_table_date_slicer(
+    df: pd.DataFrame,
+    *,
+    label: str = "Filtered Report Table period",
+    key: str = "filtered_report_table_period_slicer",
+) -> tuple[pd.DataFrame, date, date]:
+    """Separate date slicer used only for the dashboard preview table."""
+    if df.empty or "StartDateTimeGMT" not in df.columns:
+        today = date.today()
+        st.caption(f"{label}: no available reports.")
+        return df, today, today
+
+    dates = pd.to_datetime(df["StartDateTimeGMT"], errors="coerce", utc=True).dt.date.dropna()
+    if dates.empty:
+        today = date.today()
+        st.caption(f"{label}: no valid report dates.")
+        return df, today, today
+
+    min_date = max(dates.min(), API_FULL_START_DATE)
+    max_date = min(dates.max(), date.today())
+
+    st.caption("This period controls only the table below. KPI cards use the KPI Periods in the sidebar.")
+
+    if min_date >= max_date:
+        selected_start, selected_end = min_date, max_date
+        st.caption(f"Available period: {selected_start.strftime('%d/%m/%Y')}")
+    else:
+        selected_start, selected_end = st.slider(
+            label,
+            min_value=min_date,
+            max_value=max_date,
+            value=(min_date, max_date),
+            format="DD/MM/YYYY",
+            key=key,
+            label_visibility="collapsed",
+        )
+
+    filtered_df = filter_dataframe_by_date_range(df, selected_start, selected_end)
+    st.caption(
+        f"Table period: {selected_start.strftime('%d/%m/%Y')} to {selected_end.strftime('%d/%m/%Y')} "
+        f"({len(filtered_df):,} of {len(df):,} selected-vessel reports)"
+    )
+    return filtered_df, selected_start, selected_end
+
 # =============================================================================
 # Session-state data  helpers
 # =============================================================================
@@ -2935,7 +3017,8 @@ def main() -> None:
         st.dataframe(make_display_dataframe(latest_by_vessel(dashboard_df)), use_container_width=True, hide_index=True)
 
         st.markdown('<div class="section-title">Filtered Report Table</div>', unsafe_allow_html=True)
-        sorted_dashboard_df = dashboard_df.sort_values("EndDateTimeGMT", ascending=False)
+        table_df, table_start_date, table_end_date = render_table_date_slicer(dashboard_df)
+        sorted_dashboard_df = table_df.sort_values("EndDateTimeGMT", ascending=False)
         preview_dashboard_df = sorted_dashboard_df.head(TABLE_PREVIEW_ROW_LIMIT)
         display_df = make_display_dataframe(preview_dashboard_df)
         st.dataframe(display_df, use_container_width=True, hide_index=True)
