@@ -36,7 +36,7 @@ UI_DATE_INPUT_FORMAT = "DD/MM/YYYY"
 DISPLAY_DATETIME_FORMAT = "%d/%m/%Y %H:%M"
 API_FULL_START_DATE = date(2026, 1, 1)
 TABLE_PREVIEW_ROW_LIMIT = 500
-CALCULATION_SCHEMA_VERSION = "2026-06-25-dg-running-hours-table-slider-v3"
+CALCULATION_SCHEMA_VERSION = "2026-06-25-dg-running-hours-exact-names-cache-bust-v4"
 
 
 
@@ -1366,6 +1366,7 @@ def cached_fetch_report_data(
     token: str,
     auth_method: str,
     start_date: date,
+    cache_marker: str,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     return fetch_report_data(
         username=username,
@@ -2668,6 +2669,14 @@ def render_table_date_slicer(
 # =============================================================================
 
 
+def raw_value_alias_signature() -> str:
+    alias_text = "|".join(
+        f"{column}:{','.join(aliases)}"
+        for column, aliases in sorted(VALUE_ALIASES.items())
+    )
+    return sha256(alias_text.encode("utf-8")).hexdigest()[:12]
+
+
 def request_signature(
     username: str,
     auth_method: str,
@@ -2678,6 +2687,9 @@ def request_signature(
         "username_hash": sha256(username.encode("utf-8")).hexdigest()[:12],
         "auth_method": auth_method.lower(),
         "start_date": start_date.isoformat(),
+        # This matters because raw API rows are compacted by VALUE_ALIASES.
+        # If aliases change, old compact raw data may not contain newly added API values.
+        "raw_value_alias_signature": raw_value_alias_signature(),
     }
 
 
@@ -2754,7 +2766,7 @@ def raw_data_covers_request(
 
     # If the same API/user/auth data was fetched from an earlier start date, it
     # also covers later start-date selections. No new API call is needed.
-    for key in ["endpoint", "username_hash", "auth_method"]:
+    for key in ["endpoint", "username_hash", "auth_method", "raw_value_alias_signature"]:
         if loaded_signature.get(key) != requested_signature.get(key):
             return False
 
@@ -2805,6 +2817,7 @@ def run_warmup_if_requested() -> None:
                 token=token,
                 auth_method=auth_method,
                 start_date=start_date,
+                cache_marker=raw_value_alias_signature(),
             )
             all_df = cached_transform_report_data(raw_df)
     except requests.HTTPError as exc:
@@ -2876,6 +2889,7 @@ def main() -> None:
                     token=token,
                     auth_method=auth_method,
                     start_date=start_date,
+                    cache_marker=raw_signature["raw_value_alias_signature"],
                 )
             set_loaded_raw_state(raw_df, metadata, raw_signature)
             df = None
