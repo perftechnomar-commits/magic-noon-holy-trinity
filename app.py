@@ -2503,13 +2503,25 @@ def render_kpi_date_slicer(
         st.caption(f"{label}: no valid report dates.")
         return df, today, today
 
-    min_date = max(dates.min(), API_FULL_START_DATE)
-    max_date = min(dates.max(), date.today())
+    current_min_date = max(dates.min(), API_FULL_START_DATE)
+    current_max_date = min(dates.max(), date.today())
 
-    # Keep the user's last chosen KPI period globally, even when changing
-    # vessel/fleet. Only clamp it when the new selection has no data for part
-    # of that period. On first launch, default to the full available period
-    # after the default KPI filters have been applied.
+    # Keep one stable slider range per KPI for the whole user session.
+    # This prevents vessel/fleet changes from rewriting the user's selected
+    # KPI period just because the newly selected vessel has a narrower data
+    # window. On first app launch, the stored range is the full period available
+    # after the default KPI filters are applied. Later selections can expand
+    # the stored range, but they do not shrink it.
+    bounds_key = f"{key}_stable_bounds"
+    previous_bounds = st.session_state.get(bounds_key)
+    if isinstance(previous_bounds, tuple) and len(previous_bounds) == 2:
+        stored_min_date, stored_max_date = previous_bounds
+        min_date = min(stored_min_date, current_min_date)
+        max_date = max(stored_max_date, current_max_date)
+    else:
+        min_date, max_date = current_min_date, current_max_date
+    st.session_state[bounds_key] = (min_date, max_date)
+
     desired_key = f"{key}_desired_period"
     previous_value = st.session_state.get(desired_key)
 
@@ -2517,7 +2529,6 @@ def render_kpi_date_slicer(
         previous_start, previous_end = previous_value
         selected_start = max(min(previous_start, max_date), min_date)
         selected_end = max(min(previous_end, max_date), min_date)
-
         if selected_start > selected_end:
             selected_start, selected_end = min_date, max_date
     else:
@@ -2529,14 +2540,13 @@ def render_kpi_date_slicer(
         st.session_state[desired_key] = (selected_start, selected_end)
         st.caption(f"Available period: {selected_start.strftime('%d/%m/%Y')}")
     else:
-        widget_key = f"{key}_widget_{min_date.isoformat()}_{max_date.isoformat()}"
         selected_start, selected_end = st.slider(
             label,
             min_value=min_date,
             max_value=max_date,
             value=(selected_start, selected_end),
             format="DD/MM/YYYY",
-            key=widget_key,
+            key=key,
             label_visibility="collapsed",
         )
         st.session_state[desired_key] = (selected_start, selected_end)
