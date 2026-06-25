@@ -3021,10 +3021,6 @@ def main() -> None:
 
     with tab_dashboard:
         st.markdown('<div class="section-title">Fleet KPIs</div>', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="section-note">Weighted averages use total consumption and total running hours or total energy, with KPI periods controlled from the sidebar.</div>',
-            unsafe_allow_html=True,
-        )
         render_kpis(slip_kpi_df, me_sfoc_kpi_df, boiler_kpi_df)
 
         kpi_excel_bytes = to_kpi_excel_bytes(
