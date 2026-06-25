@@ -1604,9 +1604,13 @@ def add_calculations(report_df: pd.DataFrame) -> pd.DataFrame:
     me_sum = sum_numeric_columns(df, ME_FUEL_COLUMNS)
     df["Consumption ME 24 Hours [MT]"] = safe_divide(me_sum * 24, lap_time).round(3)
 
-    df["SFOC [g/kWh]"] = (
+    sfoc_values = (
         safe_divide(df["Consumption ME 24 Hours [MT]"], power) / 0.000024
     ).round(3).fillna(0)
+    # Keep the legacy internal column and the cleaner display-label alias.
+    # This prevents old session/cache data or older filter settings from losing SFOC.
+    df["SFOC [gr/Kwh]"] = sfoc_values
+    df["SFOC [g/kWh]"] = sfoc_values
 
     df["Boiler Sum"] = sum_numeric_columns(df, BOILER_FUEL_COLUMNS).round(3)
 
@@ -1807,7 +1811,7 @@ def to_kpi_excel_bytes(
 
         slip = numeric_series(vessel_slip_df, "Calculated Slip").mean()
         me_load = numeric_series(vessel_me_sfoc_df, "ME Load [%MCR]").mean()
-        sfoc = numeric_series(vessel_me_sfoc_df, "SFOC [g/kWh]").replace(0, pd.NA).mean()
+        sfoc = numeric_series_any(vessel_me_sfoc_df, ["SFOC [g/kWh]", "SFOC [gr/Kwh]"]).replace(0, pd.NA).mean()
         boiler = numeric_series(vessel_boiler_df, "Boiler Sum").sum(min_count=1)
         melo_consumption_day = weighted_melo_ltr_per_running_day(vessel_me_sfoc_df)
         cylo_sloc = weighted_sloc_g_per_kwh(
@@ -1902,6 +1906,13 @@ def numeric_series(df: pd.DataFrame, column: str) -> pd.Series:
     if column not in df.columns:
         return pd.Series(dtype="float64")
     return pd.to_numeric(df[column], errors="coerce")
+
+
+def numeric_series_any(df: pd.DataFrame, columns: list[str]) -> pd.Series:
+    for column in columns:
+        if column in df.columns:
+            return pd.to_numeric(df[column], errors="coerce")
+    return pd.Series(dtype="float64")
 
 
 def weighted_melo_ltr_per_running_day(df: pd.DataFrame) -> Any:
@@ -2011,7 +2022,7 @@ def render_card_grid(cards: list[str], grid_class: str) -> None:
 def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.DataFrame) -> None:
     slip = numeric_series(slip_df, "Calculated Slip").mean()
     me_load = numeric_series(me_sfoc_df, "ME Load [%MCR]").mean()
-    sfoc = numeric_series(me_sfoc_df, "SFOC [g/kWh]").replace(0, pd.NA).mean()
+    sfoc = numeric_series_any(me_sfoc_df, ["SFOC [g/kWh]", "SFOC [gr/Kwh]"]).replace(0, pd.NA).mean()
     boiler = numeric_series(boiler_df, "Boiler Sum").sum(min_count=1)
     melo_consumption_day = weighted_melo_ltr_per_running_day(me_sfoc_df)
     cylo_sloc = weighted_sloc_g_per_kwh(
