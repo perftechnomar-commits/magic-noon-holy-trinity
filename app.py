@@ -36,7 +36,7 @@ UI_DATE_INPUT_FORMAT = "DD/MM/YYYY"
 DISPLAY_DATETIME_FORMAT = "%d/%m/%Y %H:%M"
 API_FULL_START_DATE = date(2026, 1, 1)
 TABLE_PREVIEW_ROW_LIMIT = 500
-CALCULATION_SCHEMA_VERSION = "2026-06-24-gelo-ltr-running-day-no-dg-hours"
+CALCULATION_SCHEMA_VERSION = "2026-06-24-label-unit-detail-order-v2"
 
 
 
@@ -166,7 +166,7 @@ DISPLAY_COLUMNS = [
     "ME Load [%MCR]",
     "Power from Torque Meter [kW]",
     "Consumption ME 24 Hours [MT]",
-    "SFOC [gr/Kwh]",
+    "SFOC [g/kWh]",
     "Boiler Sum",
     "Total DG Power [kW]",
     "MELO ROB [ltr]",
@@ -178,7 +178,7 @@ DISPLAY_COLUMNS = [
     "Cylinder Oil 2 ROB [ltr]",
     "Cylinder Oil 2 Received [ltr]",
     "Cylinder Oil Consumption [ltr]",
-    "CYLO SLOC [g/Kwh]",
+    "CYLO SLOC [g/kWh]",
     "GELO ROB [ltr]",
     "GELO Received [ltr]",
     "GELO Consumption [ltr]",
@@ -208,7 +208,7 @@ DEFAULT_PERFORMANCE_FILTER_COLUMNS = [
     "Steaming Time Since Last Report [hh:mm]",
     "ME Load [%MCR]",
     "Calculated Slip",
-    "SFOC [gr/Kwh]",
+    "SFOC [g/kWh]",
 ]
 
 DEFAULT_BOILER_FILTER_COLUMNS = [
@@ -220,7 +220,7 @@ DEFAULT_PERFORMANCE_NUMERIC_FILTERS = {
     "Steaming Time Since Last Report [hh:mm]": {"min": "5", "max": "", "min_op": ">", "max_op": "<="},
     "ME Load [%MCR]": {"min": "0.10", "max": "1", "min_op": ">", "max_op": "<="},
     "Calculated Slip": {"min": "-0.15", "max": "0.35", "min_op": ">=", "max_op": "<="},
-    "SFOC [gr/Kwh]": {"min": "150", "max": "250", "min_op": ">=", "max_op": "<="},
+    "SFOC [g/kWh]": {"min": "150", "max": "250", "min_op": ">=", "max_op": "<="},
 }
 
 DEFAULT_BOILER_NUMERIC_FILTERS = {
@@ -1571,7 +1571,7 @@ def calculate_sloc_g_per_kwh(
     energy_kwh = energy_kwh.mask(energy_kwh <= 0)
 
     # API oil quantities are in liters. Convert liters -> kg with density,
-    # then kg -> grams so SLOC is directly comparable with SFOC [gr/Kwh].
+    # then kg -> grams so SLOC is directly comparable with SFOC [g/kWh].
     consumption_grams = (
         pd.to_numeric(consumption_ltr, errors="coerce")
         * density_kg_per_ltr
@@ -1604,7 +1604,7 @@ def add_calculations(report_df: pd.DataFrame) -> pd.DataFrame:
     me_sum = sum_numeric_columns(df, ME_FUEL_COLUMNS)
     df["Consumption ME 24 Hours [MT]"] = safe_divide(me_sum * 24, lap_time).round(3)
 
-    df["SFOC [gr/Kwh]"] = (
+    df["SFOC [g/kWh]"] = (
         safe_divide(df["Consumption ME 24 Hours [MT]"], power) / 0.000024
     ).round(3).fillna(0)
 
@@ -1644,7 +1644,7 @@ def add_calculations(report_df: pd.DataFrame) -> pd.DataFrame:
         df["MELO Consumption [ltr]"],
         steaming_hours,
     ).round(3)
-    df["CYLO SLOC [g/Kwh]"] = calculate_sloc_g_per_kwh(
+    df["CYLO SLOC [g/kWh]"] = calculate_sloc_g_per_kwh(
         df["Cylinder Oil Consumption [ltr]"],
         power,
         lap_time,
@@ -1807,7 +1807,7 @@ def to_kpi_excel_bytes(
 
         slip = numeric_series(vessel_slip_df, "Calculated Slip").mean()
         me_load = numeric_series(vessel_me_sfoc_df, "ME Load [%MCR]").mean()
-        sfoc = numeric_series(vessel_me_sfoc_df, "SFOC [gr/Kwh]").replace(0, pd.NA).mean()
+        sfoc = numeric_series(vessel_me_sfoc_df, "SFOC [g/kWh]").replace(0, pd.NA).mean()
         boiler = numeric_series(vessel_boiler_df, "Boiler Sum").sum(min_count=1)
         melo_consumption_day = weighted_melo_ltr_per_running_day(vessel_me_sfoc_df)
         cylo_sloc = weighted_sloc_g_per_kwh(
@@ -1824,10 +1824,10 @@ def to_kpi_excel_bytes(
                 "Fleet": vessel_fleet_name(vessel),
                 "Average Calculated Slip": format_percentage(slip),
                 "Average ME Load [%MCR]": format_percentage(me_load),
-                "Average SFOC [gr/Kwh]": format_value(sfoc, 2),
+                "Average SFOC [g/kWh]": format_value(sfoc, 2),
                 "Boiler Sum": format_value(boiler, 2),
                 "MELO Consumption [ltr/running day]": format_value(melo_consumption_day, 2),
-                "CYLO SLOC [g/Kwh]": format_value(cylo_sloc, 2),
+                "CYLO SLOC [g/kWh]": format_value(cylo_sloc, 2),
                 "GELO Consumption [ltr/running day]": format_value(gelo_consumption_day, 2),
             }
         )
@@ -2011,7 +2011,7 @@ def render_card_grid(cards: list[str], grid_class: str) -> None:
 def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.DataFrame) -> None:
     slip = numeric_series(slip_df, "Calculated Slip").mean()
     me_load = numeric_series(me_sfoc_df, "ME Load [%MCR]").mean()
-    sfoc = numeric_series(me_sfoc_df, "SFOC [gr/Kwh]").replace(0, pd.NA).mean()
+    sfoc = numeric_series(me_sfoc_df, "SFOC [g/kWh]").replace(0, pd.NA).mean()
     boiler = numeric_series(boiler_df, "Boiler Sum").sum(min_count=1)
     melo_consumption_day = weighted_melo_ltr_per_running_day(me_sfoc_df)
     cylo_sloc = weighted_sloc_g_per_kwh(
@@ -2029,6 +2029,7 @@ def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.D
     slip_engine_distance = numeric_sum(slip_df, "Engine Distance [nm]")
     slip_distance_over_ground = numeric_sum(slip_df, "Distance Over Ground [nm]")
     me_fuel_total = sum_numeric_columns(me_sfoc_df, ME_FUEL_COLUMNS).sum(min_count=1)
+    me_fuel_total_g = pd.NA if pd.isna(me_fuel_total) else me_fuel_total * 1_000_000
     boiler_hours = numeric_sum(boiler_df, "Steaming Time Since Last Report [hh:mm]")
     if pd.isna(boiler_hours):
         boiler_hours = numeric_sum(boiler_df, "LapTime")
@@ -2059,10 +2060,11 @@ def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.D
                 ],
             ),
             kpi_card_html(
-                "Average SFOC [gr/Kwh]",
+                "Average SFOC [g/kWh]",
                 format_value(sfoc, 2),
                 [
                     ("Total Fuel Consumption (ME)", format_value(me_fuel_total, 2, " MT")),
+                    ("Total Fuel Consumption (ME)", format_value(me_fuel_total_g, 0, " g")),
                     ("Total Energy (Torque Meter)", format_value(torque_energy, 0, " kWh")),
                 ],
             ),
@@ -2090,12 +2092,12 @@ def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.D
                 ],
             ),
             sloc_card_html(
-                "CYLO SLOC [g/Kwh]",
+                "CYLO SLOC [g/kWh]",
                 format_value(cylo_sloc, 2),
                 [
                     ("Total CYLO Consumption", format_value(cylo_total_ltr, 2, " ltr")),
+                    ("Total CYLO Consumption", format_value(cylo_total_g, 2, " g")),
                     ("Total Energy (Torque Meter)", format_value(torque_energy, 0, " kWh")),
-                    ("Total Consumption", format_value(cylo_total_g, 2, " g")),
                 ],
             ),
             sloc_card_html(
