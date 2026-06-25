@@ -2505,40 +2505,41 @@ def render_kpi_date_slicer(
 
     min_date = max(dates.min(), API_FULL_START_DATE)
     max_date = min(dates.max(), date.today())
-    
-    previous_value = st.session_state.get(key)
+
+    # Keep the user's last chosen KPI period globally, even when changing
+    # vessel/fleet. Only clamp it when the new selection has no data for part
+    # of that period. On first launch, default to the full available period
+    # after the default KPI filters have been applied.
+    desired_key = f"{key}_desired_period"
+    previous_value = st.session_state.get(desired_key)
+
     if isinstance(previous_value, tuple) and len(previous_value) == 2:
         previous_start, previous_end = previous_value
-
-        # Keep the user's selected start date when changing vessel/fleet, but
-        # always move the end date to the latest available report date in the
-        # current dataset. The real user-controlled filtration is therefore
-        # the beginning of the KPI period.
         selected_start = max(min(previous_start, max_date), min_date)
         selected_end = max(min(previous_end, max_date), min_date)
 
         if selected_start > selected_end:
             selected_start, selected_end = min_date, max_date
-
-        st.session_state[key] = (selected_start, selected_end)
     else:
-        st.session_state[key] = (min_date, max_date)
+        selected_start, selected_end = min_date, max_date
 
     st.caption(label)
     if min_date >= max_date:
         selected_start, selected_end = min_date, max_date
-        st.session_state[key] = (selected_start, selected_end)
+        st.session_state[desired_key] = (selected_start, selected_end)
         st.caption(f"Available period: {selected_start.strftime('%d/%m/%Y')}")
     else:
+        widget_key = f"{key}_widget_{min_date.isoformat()}_{max_date.isoformat()}"
         selected_start, selected_end = st.slider(
             label,
             min_value=min_date,
             max_value=max_date,
-            value=st.session_state[key],
+            value=(selected_start, selected_end),
             format="DD/MM/YYYY",
-            key=key,
+            key=widget_key,
             label_visibility="collapsed",
         )
+        st.session_state[desired_key] = (selected_start, selected_end)
 
     filtered_df = filter_dataframe_by_date_range(df, selected_start, selected_end)
     st.caption(
