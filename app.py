@@ -36,7 +36,7 @@ UI_DATE_INPUT_FORMAT = "DD/MM/YYYY"
 DISPLAY_DATETIME_FORMAT = "%d/%m/%Y %H:%M"
 API_FULL_START_DATE = date(2026, 1, 1)
 TABLE_PREVIEW_ROW_LIMIT = 500
-CALCULATION_SCHEMA_VERSION = "2026-06-25-dg-running-hours-exact-names-cache-bust-v4"
+CALCULATION_SCHEMA_VERSION = "2026-06-25-dynamic-lub-oil-consumption-sample-v1"
 
 
 
@@ -1708,6 +1708,80 @@ def add_calculations(report_df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+
+
+def recalculate_lub_oil_for_sample(df: pd.DataFrame) -> pd.DataFrame:
+    """Recalculate ROB-based lub-oil consumption inside the final selected KPI sample.
+
+    The base dataset calculates consumption against the previous report in the full
+    chronological vessel dataset. KPI filters intentionally define a smaller sample,
+    so the KPI cards and KPI Excel export should calculate MELO/CYLO/GELO intervals
+    against the previous row that remains in that selected sample.
+    """
+    if df.empty:
+        return df.copy()
+
+    sample = df.copy()
+    original_order = pd.Series(range(len(sample)), index=sample.index)
+    sample["_sample_original_order"] = original_order
+
+    sort_columns = [column for column in ["ShipName", "EndDateTimeGMT", "ReportId"] if column in sample.columns]
+    if sort_columns:
+        sample = sample.sort_values(sort_columns, na_position="last")
+
+    sample["MELO Consumption [ltr]"] = calculate_interval_consumption_ltr(
+        sample,
+        "MELO ROB [ltr]",
+        "MELO Received [ltr]",
+    ).round(3)
+
+    cylinder_oil_1_consumption = calculate_interval_consumption_ltr(
+        sample,
+        "Cylinder Oil 1 ROB [ltr]",
+        "Cylinder Oil 1 Received [ltr]",
+    )
+    cylinder_oil_2_consumption = calculate_interval_consumption_ltr(
+        sample,
+        "Cylinder Oil 2 ROB [ltr]",
+        "Cylinder Oil 2 Received [ltr]",
+    )
+    sample["Cylinder Oil Consumption [ltr]"] = (
+        pd.concat([cylinder_oil_1_consumption, cylinder_oil_2_consumption], axis=1)
+        .sum(axis=1, min_count=1)
+        .round(3)
+    )
+
+    sample["GELO Consumption [ltr]"] = calculate_interval_consumption_ltr(
+        sample,
+        "GELO ROB [ltr]",
+        "GELO Received [ltr]",
+    ).round(3)
+
+    running_hours = pd.to_numeric(sample.get("Steaming Time Since Last Report [hh:mm]"), errors="coerce")
+    power = pd.to_numeric(sample.get("Power from Torque Meter [kW]"), errors="coerce")
+    lap_time = pd.to_numeric(sample.get("LapTime"), errors="coerce")
+
+    if all(column in sample.columns for column in DG_RUNNING_HOUR_COLUMNS):
+        sample["Total DG Running Hours [hh:mm]"] = sum_numeric_columns(sample, DG_RUNNING_HOUR_COLUMNS).round(3)
+
+    sample["MELO Consumption [ltr/day]"] = calculate_consumption_ltr_per_day(
+        sample["MELO Consumption [ltr]"],
+        running_hours,
+    ).round(3)
+    sample["CYLO SLOC [g/kWh]"] = calculate_sloc_g_per_kwh(
+        sample["Cylinder Oil Consumption [ltr]"],
+        power,
+        lap_time,
+        CYLO_DENSITY_KG_PER_LTR,
+    ).round(3)
+    sample["GELO Consumption [ltr/day]"] = calculate_consumption_ltr_per_day(
+        sample["GELO Consumption [ltr]"],
+        sample.get("Total DG Running Hours [hh:mm]", pd.Series(pd.NA, index=sample.index)),
+    ).round(3)
+
+    sample = sample.sort_values("_sample_original_order").drop(columns=["_sample_original_order"])
+    return sample
+
 # =============================================================================
 # Display/export helpers
 # =============================================================================
@@ -1854,19 +1928,20 @@ def to_kpi_excel_bytes(
         vessel_slip_df = slip_kpi_df.loc[vessel_mask(slip_kpi_df, vessel)]
         vessel_me_sfoc_df = me_sfoc_kpi_df.loc[vessel_mask(me_sfoc_kpi_df, vessel)]
         vessel_boiler_df = boiler_kpi_df.loc[vessel_mask(boiler_kpi_df, vessel)]
+        vessel_lub_oil_df = recalculate_lub_oil_for_sample(vessel_me_sfoc_df)
 
         slip = numeric_series(vessel_slip_df, "Calculated Slip").mean()
         me_load = numeric_series(vessel_me_sfoc_df, "ME Load [%MCR]").mean()
         sfoc = numeric_series_any(vessel_me_sfoc_df, ["SFOC [g/kWh]", "SFOC [gr/Kwh]"]).replace(0, pd.NA).mean()
         boiler = numeric_series(vessel_boiler_df, "Boiler Sum").sum(min_count=1)
-        melo_consumption_day = weighted_melo_ltr_per_running_day(vessel_me_sfoc_df)
+        melo_consumption_day = weighted_melo_ltr_per_running_day(vessel_lub_oil_df)
         cylo_sloc = weighted_sloc_g_per_kwh(
-            vessel_me_sfoc_df,
+            vessel_lub_oil_df,
             "Cylinder Oil Consumption [ltr]",
             "Power from Torque Meter [kW]",
             CYLO_DENSITY_KG_PER_LTR,
         )
-        gelo_consumption_day = weighted_gelo_ltr_per_running_day(vessel_me_sfoc_df)
+        gelo_consumption_day = weighted_gelo_ltr_per_running_day(vessel_lub_oil_df)
 
         rows.append(
             {
@@ -2066,18 +2141,20 @@ def render_card_grid(cards: list[str], grid_class: str) -> None:
 
 
 def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.DataFrame) -> None:
+    lub_oil_df = recalculate_lub_oil_for_sample(me_sfoc_df)
+
     slip = numeric_series(slip_df, "Calculated Slip").mean()
     me_load = numeric_series(me_sfoc_df, "ME Load [%MCR]").mean()
     sfoc = numeric_series_any(me_sfoc_df, ["SFOC [g/kWh]", "SFOC [gr/Kwh]"]).replace(0, pd.NA).mean()
     boiler = numeric_series(boiler_df, "Boiler Sum").sum(min_count=1)
-    melo_consumption_day = weighted_melo_ltr_per_running_day(me_sfoc_df)
+    melo_consumption_day = weighted_melo_ltr_per_running_day(lub_oil_df)
     cylo_sloc = weighted_sloc_g_per_kwh(
-        me_sfoc_df,
+        lub_oil_df,
         "Cylinder Oil Consumption [ltr]",
         "Power from Torque Meter [kW]",
         CYLO_DENSITY_KG_PER_LTR,
     )
-    gelo_consumption_day = weighted_gelo_ltr_per_running_day(me_sfoc_df)
+    gelo_consumption_day = weighted_gelo_ltr_per_running_day(lub_oil_df)
 
     running_hours = numeric_sum(me_sfoc_df, "Steaming Time Since Last Report [hh:mm]")
     if pd.isna(running_hours):
@@ -2091,11 +2168,11 @@ def render_kpis(slip_df: pd.DataFrame, me_sfoc_df: pd.DataFrame, boiler_df: pd.D
     if pd.isna(boiler_hours):
         boiler_hours = numeric_sum(boiler_df, "LapTime")
     torque_energy = energy_sum(me_sfoc_df, "Power from Torque Meter [kW]")
-    gelo_running_hours = numeric_sum(me_sfoc_df, "Total DG Running Hours [hh:mm]")
+    gelo_running_hours = numeric_sum(lub_oil_df, "Total DG Running Hours [hh:mm]")
     gelo_running_days = pd.NA if pd.isna(gelo_running_hours) else gelo_running_hours / 24
-    melo_total = numeric_sum(me_sfoc_df, "MELO Consumption [ltr]")
-    cylo_total_ltr = numeric_sum(me_sfoc_df, "Cylinder Oil Consumption [ltr]")
-    gelo_total_ltr = numeric_sum(me_sfoc_df, "GELO Consumption [ltr]")
+    melo_total = numeric_sum(lub_oil_df, "MELO Consumption [ltr]")
+    cylo_total_ltr = numeric_sum(lub_oil_df, "Cylinder Oil Consumption [ltr]")
+    gelo_total_ltr = numeric_sum(lub_oil_df, "GELO Consumption [ltr]")
     cylo_total_g = pd.NA if pd.isna(cylo_total_ltr) else cylo_total_ltr * CYLO_DENSITY_KG_PER_LTR * 1000
 
     render_card_grid(
@@ -3051,7 +3128,11 @@ def main() -> None:
         ):
             st.caption(
                 f"Calculated Slip uses {len(slip_kpi_df):,} reports. "
-                f"ME Load / SFOC / Lub Oil uses {len(me_sfoc_kpi_df):,} reports. "
+                f"ME Load / SFOC uses {len(me_sfoc_kpi_df):,} reports. "
+                f"Lub Oil sample uses {len(me_sfoc_kpi_df):,} reports "
+                f"(MELO {numeric_series(recalculate_lub_oil_for_sample(me_sfoc_kpi_df), 'MELO Consumption [ltr]').notna().sum():,}, "
+                f"CYLO {numeric_series(recalculate_lub_oil_for_sample(me_sfoc_kpi_df), 'Cylinder Oil Consumption [ltr]').notna().sum():,}, "
+                f"GELO {numeric_series(recalculate_lub_oil_for_sample(me_sfoc_kpi_df), 'GELO Consumption [ltr]').notna().sum():,}). "
                 f"Boiler Sum uses {len(boiler_kpi_df):,} reports."
             )
 
