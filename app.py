@@ -3129,10 +3129,7 @@ def main() -> None:
             st.caption(
                 f"Calculated Slip uses {len(slip_kpi_df):,} reports. "
                 f"ME Load / SFOC uses {len(me_sfoc_kpi_df):,} reports. "
-                f"Lub Oil sample uses {len(me_sfoc_kpi_df):,} reports "
-                f"(MELO {numeric_series(recalculate_lub_oil_for_sample(me_sfoc_kpi_df), 'MELO Consumption [ltr]').notna().sum():,}, "
-                f"CYLO {numeric_series(recalculate_lub_oil_for_sample(me_sfoc_kpi_df), 'Cylinder Oil Consumption [ltr]').notna().sum():,}, "
-                f"GELO {numeric_series(recalculate_lub_oil_for_sample(me_sfoc_kpi_df), 'GELO Consumption [ltr]').notna().sum():,}). "
+                f"Lub Oil uses {len(me_sfoc_kpi_df):,} reports "
                 f"Boiler Sum uses {len(boiler_kpi_df):,} reports."
             )
 
