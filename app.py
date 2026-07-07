@@ -1225,6 +1225,47 @@ def request_headers(token: str, auth_method: str) -> dict[str, str]:
     return headers
 
 
+
+
+RETRYABLE_HTTP_STATUSES = {500, 502, 503, 504}
+RETRYABLE_REQUEST_EXCEPTIONS = (
+    requests.ConnectionError,
+    requests.ReadTimeout,
+    requests.Timeout,
+    requests.ChunkedEncodingError,
+)
+
+
+def request_with_retry(
+    session: requests.Session,
+    url: str,
+    *,
+    auth: Any,
+    timeout: int = 90,
+    max_attempts: int = 5,
+    base_sleep_seconds: float = 2.0,
+) -> requests.Response:
+    """GET an OData page with retry/backoff for transient Marorka disconnects."""
+    last_error: Exception | None = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = session.get(url, auth=auth, timeout=timeout)
+            if response.status_code in RETRYABLE_HTTP_STATUSES and attempt < max_attempts:
+                time.sleep(base_sleep_seconds * (2 ** (attempt - 1)))
+                continue
+            return response
+        except RETRYABLE_REQUEST_EXCEPTIONS as exc:
+            last_error = exc
+            if attempt >= max_attempts:
+                raise
+            time.sleep(base_sleep_seconds * (2 ** (attempt - 1)))
+
+    if last_error is not None:
+        raise last_error
+    raise requests.RequestException("Marorka API request failed before a response was received.")
+
+
 def default_report_window(today: date | None = None) -> tuple[date, date]:
     today = today or date.today()
 
@@ -1326,11 +1367,7 @@ def fetch_report_data(
                 break
             seen_urls.add(next_url)
 
-            response = session.get(
-                next_url,
-                auth=auth,
-                timeout=90,
-            )
+            response = request_with_retry(session, next_url, auth=auth, timeout=90)
             total_bytes += len(response.content)
             response.raise_for_status()
             pages += 1
@@ -2888,21 +2925,34 @@ def run_warmup_if_requested() -> None:
         st.error("Warmup failed: MARORKA_USERNAME and MARORKA_PASSWORD are required.")
         st.stop()
 
-    if get_query_param("force", "0") == "1":
-        cached_fetch_report_data.clear()
-        cached_transform_report_data.clear()
+    force_refresh = get_query_param("force", "0") == "1"
 
     try:
         with st.spinner("Warming up API..."):
-            raw_df, metadata = cached_fetch_report_data(
-                username=username,
-                password=password,
-                token=token,
-                auth_method=auth_method,
-                start_date=start_date,
-                cache_marker=raw_value_alias_signature(),
-            )
-            all_df = cached_transform_report_data(raw_df)
+            if force_refresh:
+                # Validate a complete fresh API pull and transform before touching
+                # existing Streamlit caches. This prevents active users from
+                # hitting an empty/slow cache window if Marorka disconnects.
+                raw_df, metadata = fetch_report_data(
+                    username=username,
+                    password=password,
+                    token=token,
+                    auth_method=auth_method,
+                    start_date=start_date,
+                )
+                all_df = transform_report_data(raw_df)
+                cached_fetch_report_data.clear()
+                cached_transform_report_data.clear()
+            else:
+                raw_df, metadata = cached_fetch_report_data(
+                    username=username,
+                    password=password,
+                    token=token,
+                    auth_method=auth_method,
+                    start_date=start_date,
+                    cache_marker=raw_value_alias_signature(),
+                )
+                all_df = cached_transform_report_data(raw_df)
     except requests.HTTPError as exc:
         status = exc.response.status_code if exc.response is not None else "unknown"
         st.error(f"Warmup failed: Marorka API request failed with status {status}.")
@@ -2955,10 +3005,6 @@ def main() -> None:
     )
 
     if needs_raw_load:
-        if refresh:
-            cached_fetch_report_data.clear()
-            cached_transform_report_data.clear()
-
         try:
             spinner_text = (
                 "Refreshing API..."
@@ -2966,16 +3012,35 @@ def main() -> None:
                 else "Loading API..."
             )
             with st.spinner(spinner_text):
-                raw_df, metadata = cached_fetch_report_data(
-                    username=username,
-                    password=password,
-                    token=token,
-                    auth_method=auth_method,
-                    start_date=start_date,
-                    cache_marker=raw_signature["raw_value_alias_signature"],
-                )
-            set_loaded_raw_state(raw_df, metadata, raw_signature)
-            df = None
+                if refresh:
+                    # Refresh atomically: fetch and transform fresh data first.
+                    # Only after both steps succeed do we clear older cached
+                    # values and replace the active session state.
+                    fresh_raw_df, fresh_metadata = fetch_report_data(
+                        username=username,
+                        password=password,
+                        token=token,
+                        auth_method=auth_method,
+                        start_date=start_date,
+                    )
+                    fresh_df = transform_report_data(fresh_raw_df)
+                    cached_fetch_report_data.clear()
+                    cached_transform_report_data.clear()
+                    raw_df, metadata = fresh_raw_df, fresh_metadata
+                    set_loaded_raw_state(raw_df, metadata, raw_signature)
+                    set_loaded_transform_state(fresh_df, transform_signature(raw_signature))
+                    df = fresh_df
+                else:
+                    raw_df, metadata = cached_fetch_report_data(
+                        username=username,
+                        password=password,
+                        token=token,
+                        auth_method=auth_method,
+                        start_date=start_date,
+                        cache_marker=raw_signature["raw_value_alias_signature"],
+                    )
+                    set_loaded_raw_state(raw_df, metadata, raw_signature)
+                    df = None
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else "unknown"
             st.error(f"Marorka API request failed with status {status}.")
