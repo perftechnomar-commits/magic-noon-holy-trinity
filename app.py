@@ -30,7 +30,7 @@ APP_TITLE = "Performance KPIs"
 APP_DIR = Path(__file__).resolve().parent
 DEFAULT_BACKGROUND_IMAGE = APP_DIR / ""
 ODATA_ENDPOINT = "https://online.marorka.com/Odata/v1/ODataService.svc/ReportData"
-MAX_ODATA_PAGES = 250
+MAX_ODATA_PAGES = 500
 API_CACHE_TTL_SECONDS = 21600  # 6 hours; KPI filters use local data and do not refetch.
 UI_DATE_INPUT_FORMAT = "DD/MM/YYYY"
 DISPLAY_DATETIME_FORMAT = "%d/%m/%Y %H:%M"
@@ -1357,6 +1357,7 @@ def fetch_report_data(
     total_bytes = 0
     scanned_rows = 0
     first_url = next_url
+    has_more_pages = False
     auth = request_auth(username, password, auth_method)
     headers = request_headers(token, auth_method)
 
@@ -1377,7 +1378,10 @@ def fetch_report_data(
             kept_rows.extend(compact_odata_rows(page_rows))
 
             if not next_link:
+                has_more_pages = False
                 break
+
+            has_more_pages = True
             next_url = urljoin(next_url, next_link)
 
     loaded_at_utc = datetime.now(timezone.utc)
@@ -1392,7 +1396,7 @@ def fetch_report_data(
         "downloaded_mb": round(total_bytes / 1024 / 1024, 2),
         "fetch_seconds": round(time.perf_counter() - started_at, 2),
         "first_url": first_url,
-        "hit_page_limit": pages >= MAX_ODATA_PAGES,
+        "hit_page_limit": pages >= MAX_ODATA_PAGES and has_more_pages,
     }
     return rows_to_dataframe(kept_rows), metadata
 
