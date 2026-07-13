@@ -1876,6 +1876,8 @@ def make_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         display_df["ReportId"] = (
             pd.to_numeric(display_df["ReportId"], errors="coerce")
             .map(lambda x: "-" if pd.isna(x) else str(int(x)))
+        )
+            
     for column in numeric_columns:
         values = pd.to_numeric(display_df[column], errors="coerce")
         display_df[column] = values.map(lambda value: "-" if pd.isna(value) else f"{value:,.2f}")
