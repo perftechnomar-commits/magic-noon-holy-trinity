@@ -1869,8 +1869,13 @@ def make_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             )
     numeric_columns = [
         column for column in display_df.columns
-        if column not in {"Calculated Slip", "ME Load [%MCR]", "ReportType", "ShipName", "StateName", "StartDateTimeGMT", "EndDateTimeGMT"}
+        if column not in {"ReportId", "Calculated Slip", "ME Load [%MCR]", "ReportType", "ShipName", "StateName", "StartDateTimeGMT", "EndDateTimeGMT"}
     ]
+    # Format ReportId separately as an ID
+    if "ReportId" in display_df.columns:
+        display_df["ReportId"] = (
+            pd.to_numeric(display_df["ReportId"], errors="coerce")
+            .map(lambda x: "-" if pd.isna(x) else str(int(x)))
     for column in numeric_columns:
         values = pd.to_numeric(display_df[column], errors="coerce")
         display_df[column] = values.map(lambda value: "-" if pd.isna(value) else f"{value:,.2f}")
