@@ -2942,29 +2942,21 @@ def run_warmup_if_requested() -> None:
     try:
         with st.spinner("Warming up API..."):
             if force_refresh:
-                # Validate a complete fresh API pull and transform before touching
-                # existing Streamlit caches. This prevents active users from
-                # hitting an empty/slow cache window if Marorka disconnects.
-                raw_df, metadata = fetch_report_data(
-                    username=username,
-                    password=password,
-                    token=token,
-                    auth_method=auth_method,
-                    start_date=start_date,
-                )
-                all_df = transform_report_data(raw_df)
+                # Clear first, then refill each shared cache exactly once.
+                # This avoids the previous uncached fetch + post-fetch clear pattern,
+                # which left the next normal app session with an empty cache.
                 cached_fetch_report_data.clear()
                 cached_transform_report_data.clear()
-            else:
-                raw_df, metadata = cached_fetch_report_data(
-                    username=username,
-                    password=password,
-                    token=token,
-                    auth_method=auth_method,
-                    start_date=start_date,
-                    cache_marker=raw_value_alias_signature(),
-                )
-                all_df = cached_transform_report_data(raw_df)
+
+            raw_df, metadata = cached_fetch_report_data(
+                username=username,
+                password=password,
+                token=token,
+                auth_method=auth_method,
+                start_date=start_date,
+                cache_marker=raw_value_alias_signature(),
+            )
+            all_df = cached_transform_report_data(raw_df)
     except requests.HTTPError as exc:
         status = exc.response.status_code if exc.response is not None else "unknown"
         st.error(f"Warmup failed: Marorka API request failed with status {status}.")
@@ -3025,20 +3017,21 @@ def main() -> None:
             )
             with st.spinner(spinner_text):
                 if refresh:
-                    # Refresh atomically: fetch and transform fresh data first.
-                    # Only after both steps succeed do we clear older cached
-                    # values and replace the active session state.
-                    fresh_raw_df, fresh_metadata = fetch_report_data(
+                    # Clear first, then refill the shared fetch and transform caches
+                    # exactly once. The refreshed result is also copied into this
+                    # user's session state, so new tabs and new users can reuse it.
+                    cached_fetch_report_data.clear()
+                    cached_transform_report_data.clear()
+
+                    raw_df, metadata = cached_fetch_report_data(
                         username=username,
                         password=password,
                         token=token,
                         auth_method=auth_method,
                         start_date=start_date,
+                        cache_marker=raw_signature["raw_value_alias_signature"],
                     )
-                    fresh_df = transform_report_data(fresh_raw_df)
-                    cached_fetch_report_data.clear()
-                    cached_transform_report_data.clear()
-                    raw_df, metadata = fresh_raw_df, fresh_metadata
+                    fresh_df = cached_transform_report_data(raw_df)
                     set_loaded_raw_state(raw_df, metadata, raw_signature)
                     set_loaded_transform_state(fresh_df, transform_signature(raw_signature))
                     df = fresh_df
