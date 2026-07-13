@@ -2606,46 +2606,151 @@ def sidebar_controls() -> tuple[date, date, str, list[str], bool]:
 
 
 
-def render_dashboard_date_slicer(df: pd.DataFrame) -> tuple[pd.DataFrame, date, date]:
+DATE_PERIOD_OPTIONS = [
+    "Current Month",
+    "Previous Month",
+    "Last 3 Months",
+    "YTD",
+    "Last 7 Days",
+    "Custom Range",
+    "All",
+]
+
+
+def _month_start(value: date) -> date:
+    return value.replace(day=1)
+
+
+def _previous_month_bounds(value: date) -> tuple[date, date]:
+    current_month_start = _month_start(value)
+    previous_month_end = current_month_start - timedelta(days=1)
+    return previous_month_end.replace(day=1), previous_month_end
+
+
+def _subtract_months_month_start(value: date, months: int) -> date:
+    month_index = value.year * 12 + (value.month - 1) - months
+    year, month_zero = divmod(month_index, 12)
+    return date(year, month_zero + 1, 1)
+
+
+def resolve_date_period(
+    preset: str,
+    *,
+    available_start: date,
+    available_end: date,
+    custom_start: date | None = None,
+    custom_end: date | None = None,
+) -> tuple[date, date]:
+    reference_date = min(date.today(), available_end)
+
+    if preset == "Current Month":
+        selected_start = _month_start(reference_date)
+        selected_end = reference_date
+    elif preset == "Previous Month":
+        selected_start, selected_end = _previous_month_bounds(reference_date)
+    elif preset == "Last 3 Months":
+        selected_start = _subtract_months_month_start(reference_date, 2)
+        selected_end = reference_date
+    elif preset == "YTD":
+        selected_start = date(reference_date.year, 1, 1)
+        selected_end = reference_date
+    elif preset == "Last 7 Days":
+        selected_start = reference_date - timedelta(days=6)
+        selected_end = reference_date
+    elif preset == "Custom Range":
+        selected_start = custom_start or available_start
+        selected_end = custom_end or available_end
+    else:
+        selected_start, selected_end = available_start, available_end
+
+    selected_start = max(available_start, min(selected_start, available_end))
+    selected_end = max(available_start, min(selected_end, available_end))
+    if selected_start > selected_end:
+        selected_start, selected_end = available_start, available_end
+    return selected_start, selected_end
+
+
+def render_date_period_selector(
+    df: pd.DataFrame,
+    *,
+    label: str,
+    key: str,
+    count_label: str = "reports",
+    default_preset: str = "All",
+) -> tuple[pd.DataFrame, date, date]:
     if df.empty or "StartDateTimeGMT" not in df.columns:
         today = date.today()
+        st.caption(f"{label}: no available reports.")
         return df, today, today
 
     dates = pd.to_datetime(df["StartDateTimeGMT"], errors="coerce", utc=True).dt.date.dropna()
     if dates.empty:
         today = date.today()
+        st.caption(f"{label}: no valid report dates.")
         return df, today, today
 
-    min_date = max(dates.min(), API_FULL_START_DATE)
-    max_date = min(dates.max(), date.today())
+    available_start = max(dates.min(), API_FULL_START_DATE)
+    available_end = min(dates.max(), date.today())
 
-    st.markdown('<div class="section-title">Performance Period</div>', unsafe_allow_html=True)
-    st.caption("Drag the handles to choose the time period used by the KPIs and dashboard tables.")
+    st.caption(label)
+    preset_key = f"{key}_preset"
+    if preset_key not in st.session_state:
+        st.session_state[preset_key] = default_preset
 
-    if min_date >= max_date:
-        st.caption(f"Available data period: {min_date.strftime('%d/%m/%Y')}")
-        selected_start, selected_end = min_date, max_date
-    else:
-        selected_start, selected_end = st.slider(
-            "Timeline slicer",
-            min_value=min_date,
-            max_value=max_date,
-            value=(min_date, max_date),
-            format="DD/MM/YYYY",
-            key="dashboard_timeline_slicer",
+    preset = st.selectbox(
+        f"{label} range",
+        options=DATE_PERIOD_OPTIONS,
+        key=preset_key,
+        label_visibility="collapsed",
+    )
+
+    custom_start = None
+    custom_end = None
+    if preset == "Custom Range":
+        custom_key = f"{key}_custom_range"
+        existing = st.session_state.get(custom_key)
+        if not (isinstance(existing, tuple) and len(existing) == 2):
+            st.session_state[custom_key] = (available_start, available_end)
+
+        custom_value = st.date_input(
+            f"{label} custom dates",
+            value=st.session_state[custom_key],
+            min_value=available_start,
+            max_value=available_end,
+            format=UI_DATE_INPUT_FORMAT,
+            key=custom_key,
             label_visibility="collapsed",
         )
+        if isinstance(custom_value, tuple) and len(custom_value) == 2:
+            custom_start, custom_end = custom_value
+        elif isinstance(custom_value, date):
+            custom_start = custom_end = custom_value
 
-    start_timestamp = pd.Timestamp(selected_start, tz="UTC")
-    end_timestamp = pd.Timestamp(selected_end + timedelta(days=1), tz="UTC")
-    date_values = pd.to_datetime(df["StartDateTimeGMT"], errors="coerce", utc=True)
-    filtered_df = df[date_values.ge(start_timestamp) & date_values.lt(end_timestamp)].copy()
+    selected_start, selected_end = resolve_date_period(
+        preset,
+        available_start=available_start,
+        available_end=available_end,
+        custom_start=custom_start,
+        custom_end=custom_end,
+    )
 
+    filtered_df = filter_dataframe_by_date_range(df, selected_start, selected_end)
     st.caption(
-        f"Selected period: {selected_start.strftime('%d/%m/%Y')} to {selected_end.strftime('%d/%m/%Y')} "
-        f"({len(filtered_df):,} of {len(df):,} reports)"
+        f"{selected_start.strftime('%d/%m/%Y')} to {selected_end.strftime('%d/%m/%Y')} "
+        f"({len(filtered_df):,} of {len(df):,} {count_label})"
     )
     return filtered_df, selected_start, selected_end
+
+
+def render_dashboard_date_slicer(df: pd.DataFrame) -> tuple[pd.DataFrame, date, date]:
+    st.markdown('<div class="section-title">Performance Period</div>', unsafe_allow_html=True)
+    return render_date_period_selector(
+        df,
+        label="Performance period",
+        key="dashboard_period",
+        count_label="reports",
+        default_preset="All",
+    )
 
 
 def dataframe_date_window(df: pd.DataFrame) -> tuple[date, date]:
@@ -2677,72 +2782,13 @@ def render_kpi_date_slicer(
     label: str,
     key: str,
 ) -> tuple[pd.DataFrame, date, date]:
-    if df.empty or "StartDateTimeGMT" not in df.columns:
-        today = date.today()
-        st.caption(f"{label}: no available reports.")
-        return df, today, today
-
-    dates = pd.to_datetime(df["StartDateTimeGMT"], errors="coerce", utc=True).dt.date.dropna()
-    if dates.empty:
-        today = date.today()
-        st.caption(f"{label}: no valid report dates.")
-        return df, today, today
-
-    current_min_date = max(dates.min(), API_FULL_START_DATE)
-    current_max_date = min(dates.max(), date.today())
-
-    # Keep one stable slider range per KPI for the whole user session.
-    # This prevents vessel/fleet changes from rewriting the user's selected
-    # KPI period just because the newly selected vessel has a narrower data
-    # window. On first app launch, the stored range is the full period available
-    # after the default KPI filters are applied. Later selections can expand
-    # the stored range, but they do not shrink it.
-    bounds_key = f"{key}_stable_bounds"
-    previous_bounds = st.session_state.get(bounds_key)
-    if isinstance(previous_bounds, tuple) and len(previous_bounds) == 2:
-        stored_min_date, stored_max_date = previous_bounds
-        min_date = min(stored_min_date, current_min_date)
-        max_date = max(stored_max_date, current_max_date)
-    else:
-        min_date, max_date = current_min_date, current_max_date
-    st.session_state[bounds_key] = (min_date, max_date)
-
-    desired_key = f"{key}_desired_period"
-    previous_value = st.session_state.get(desired_key)
-
-    if isinstance(previous_value, tuple) and len(previous_value) == 2:
-        previous_start, previous_end = previous_value
-        selected_start = max(min(previous_start, max_date), min_date)
-        selected_end = max(min(previous_end, max_date), min_date)
-        if selected_start > selected_end:
-            selected_start, selected_end = min_date, max_date
-    else:
-        selected_start, selected_end = min_date, max_date
-
-    st.caption(label)
-    if min_date >= max_date:
-        selected_start, selected_end = min_date, max_date
-        st.session_state[desired_key] = (selected_start, selected_end)
-        st.caption(f"Available period: {selected_start.strftime('%d/%m/%Y')}")
-    else:
-        selected_start, selected_end = st.slider(
-            label,
-            min_value=min_date,
-            max_value=max_date,
-            value=(selected_start, selected_end),
-            format="DD/MM/YYYY",
-            key=key,
-            label_visibility="collapsed",
-        )
-        st.session_state[desired_key] = (selected_start, selected_end)
-
-    filtered_df = filter_dataframe_by_date_range(df, selected_start, selected_end)
-    st.caption(
-        f"Selected period: {selected_start.strftime('%d/%m/%Y')} to {selected_end.strftime('%d/%m/%Y')} "
-        f"({len(filtered_df):,} of {len(df):,} filtered reports)"
+    return render_date_period_selector(
+        df,
+        label=label,
+        key=key,
+        count_label="filtered reports",
+        default_preset="All",
     )
-    return filtered_df, selected_start, selected_end
-
 
 
 def render_table_date_slicer(
@@ -2751,50 +2797,13 @@ def render_table_date_slicer(
     label: str = "Filtered Report Table period",
     key: str = "filtered_report_table_period_slicer",
 ) -> tuple[pd.DataFrame, date, date]:
-    if df.empty or "StartDateTimeGMT" not in df.columns:
-        today = date.today()
-        return df, today, today
-
-    dates = pd.to_datetime(df["StartDateTimeGMT"], errors="coerce", utc=True).dt.date.dropna()
-    if dates.empty:
-        today = date.today()
-        return df, today, today
-
-    min_date = max(dates.min(), API_FULL_START_DATE)
-    max_date = min(dates.max(), date.today())
-
-    st.caption(label)
-
-    if min_date >= max_date:
-        selected_start, selected_end = min_date, max_date
-        st.caption(f"Available period: {selected_start.strftime('%d/%m/%Y')}")
-    else:
-        default_value = st.session_state.get(key)
-        if isinstance(default_value, tuple) and len(default_value) == 2:
-            default_start, default_end = default_value
-            default_start = max(min(default_start, max_date), min_date)
-            default_end = max(min(default_end, max_date), min_date)
-            if default_start > default_end:
-                default_start, default_end = min_date, max_date
-            default_value = (default_start, default_end)
-        else:
-            default_value = (min_date, max_date)
-        selected_start, selected_end = st.slider(
-            label,
-            min_value=min_date,
-            max_value=max_date,
-            value=default_value,
-            format="DD/MM/YYYY",
-            key=key,
-            label_visibility="collapsed",
-        )
-
-    filtered_df = filter_dataframe_by_date_range(df, selected_start, selected_end)
-    st.caption(
-        f"Selected table period: {selected_start.strftime('%d/%m/%Y')} to {selected_end.strftime('%d/%m/%Y')} "
-        f"({len(filtered_df):,} of {len(df):,} reports)"
+    return render_date_period_selector(
+        df,
+        label=label,
+        key=key,
+        count_label="reports",
+        default_preset="All",
     )
-    return filtered_df, selected_start, selected_end
 
 # =============================================================================
 # Session-state data  helpers
