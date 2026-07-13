@@ -192,6 +192,7 @@ DG_RUNNING_HOUR_COLUMNS = [
 ]
 
 DISPLAY_COLUMNS = [
+    "ReportId",
     "ShipName",
     "ReportType",
     "StartDateTimeGMT",
