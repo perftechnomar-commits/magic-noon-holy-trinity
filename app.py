@@ -39,9 +39,11 @@ DEFAULT_BACKGROUND_IMAGE = APP_DIR / ""
 SNAPSHOT_DIR = APP_DIR / ".holy_trinity_cache"
 SNAPSHOT_MANIFEST_FILE = SNAPSHOT_DIR / "snapshot_manifest.json"
 SNAPSHOT_LOCK_FILE = SNAPSHOT_DIR / "snapshot_refresh.lock"
-SNAPSHOT_SCHEMA_VERSION = "2026-07-15-persistent-incremental-v1"
+SNAPSHOT_REFRESH_STATUS_FILE = SNAPSHOT_DIR / "snapshot_refresh_status.json"
+SNAPSHOT_SCHEMA_VERSION = "2026-07-15-persistent-incremental-v2-chunked-bootstrap"
 SNAPSHOT_GENERATIONS_TO_KEEP = 2
 DEFAULT_INCREMENTAL_OVERLAP_DAYS = 14
+DEFAULT_REFRESH_CHUNK_DAYS = 31
 DEFAULT_INCREMENTAL_REFRESH_MAX_MINUTES = 45
 DEFAULT_FULL_REFRESH_MAX_MINUTES = 240
 API_REQUEST_TIMEOUT_SECONDS = 60
@@ -1303,10 +1305,38 @@ def default_report_window(today: date | None = None) -> tuple[date, date]:
     return start_date, end_date
 
 
-def build_odata_url(start_date: date) -> str:
-    start_text = start_date.strftime("%Y-%m-%d")
+def build_odata_url(
+    start_date: date,
+    end_date_exclusive: date | None = None,
+) -> str:
+    """Build a bounded OData request when an end date is supplied.
+
+    Full bootstrap refreshes are split into short date windows.  Marorka's
+    ReportData feed is too large to traverse safely as one pagination chain,
+    so each window has its own nextLink sequence and page safety limit.
+
+    The endpoint's established, working comparison is ``gt``.  For bounded
+    windows we query from the previous day and then trim locally to the exact
+    half-open interval [start_date, end_date_exclusive).  The one-day overlap
+    prevents rows exactly at midnight from falling between windows.
+    """
+    query_start_date = (
+        start_date - timedelta(days=1)
+        if end_date_exclusive is not None
+        else start_date
+    )
+    filter_text = (
+        "StartDateTimeGMT gt "
+        f"DateTime'{query_start_date.strftime('%Y-%m-%d')}'"
+    )
+    if end_date_exclusive is not None:
+        filter_text += (
+            " and StartDateTimeGMT lt "
+            f"DateTime'{end_date_exclusive.strftime('%Y-%m-%d')}'"
+        )
+
     params = {
-        "$filter": f"StartDateTimeGMT gt DateTime'{start_text}'",
+        "$filter": filter_text,
         "$select": ",".join(SOURCE_COLUMNS),
     }
     return f"{ODATA_ENDPOINT}?{urlencode(params)}"
@@ -1367,9 +1397,11 @@ def fetch_report_data(
     auth_method: str,
     start_date: date,
     max_duration_seconds: int | None = None,
+    end_date_exclusive: date | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Fetch one bounded or unbounded OData pagination chain."""
     started_at = time.perf_counter()
-    next_url = build_odata_url(start_date)
+    next_url = build_odata_url(start_date, end_date_exclusive)
     kept_rows: list[dict[str, Any]] = []
     seen_urls: set[str] = set()
     pages = 0
@@ -1417,21 +1449,227 @@ def fetch_report_data(
             has_more_pages = True
             next_url = urljoin(next_url, next_link)
 
+    result_df = rows_to_dataframe(kept_rows)
+    api_compact_rows = int(len(result_df))
+
+    # Bounded requests deliberately overlap by one day at the API level.  Trim
+    # back to the exact requested interval before date-window results are merged.
+    if end_date_exclusive is not None and not result_df.empty:
+        parsed_start = parse_datetime_series(result_df["StartDateTimeGMT"])
+        exact_start = pd.Timestamp(start_date, tz="UTC")
+        exact_end = pd.Timestamp(end_date_exclusive, tz="UTC")
+        result_df = result_df[
+            parsed_start.ge(exact_start) & parsed_start.lt(exact_end)
+        ].copy()
+
     loaded_at_utc = datetime.now(timezone.utc)
     metadata = {
         "loaded_at_utc": loaded_at_utc.strftime("%d-%m-%Y %H:%M:%S UTC"),
         "loaded_at_local": local_time_label(loaded_at_utc),
-        "rows": len(kept_rows),
-        "kept_rows": len(kept_rows),
+        "rows": int(len(result_df)),
+        "kept_rows": int(len(result_df)),
+        "api_compact_rows_before_window_trim": api_compact_rows,
         "scanned_rows": scanned_rows,
-        "discarded_rows": max(scanned_rows - len(kept_rows), 0),
+        "discarded_rows": max(scanned_rows - len(result_df), 0),
         "pages": pages,
         "downloaded_mb": round(total_bytes / 1024 / 1024, 2),
         "fetch_seconds": round(time.perf_counter() - started_at, 2),
         "first_url": first_url,
         "hit_page_limit": pages >= MAX_ODATA_PAGES and has_more_pages,
+        "window_start_date": start_date.isoformat(),
+        "window_end_date_exclusive": (
+            end_date_exclusive.isoformat()
+            if end_date_exclusive is not None
+            else None
+        ),
     }
-    return rows_to_dataframe(kept_rows), metadata
+    return result_df, metadata
+
+
+def iter_refresh_date_windows(
+    start_date: date,
+    end_date_exclusive: date,
+    chunk_days: int,
+) -> list[tuple[date, date]]:
+    """Return half-open date windows covering the requested refresh period."""
+    if end_date_exclusive <= start_date:
+        return []
+    windows: list[tuple[date, date]] = []
+    window_start = start_date
+    while window_start < end_date_exclusive:
+        window_end = min(
+            window_start + timedelta(days=chunk_days),
+            end_date_exclusive,
+        )
+        windows.append((window_start, window_end))
+        window_start = window_end
+    return windows
+
+
+def deduplicate_compact_raw_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Deduplicate compact long-form rows by report/value identity."""
+    if df.empty:
+        return rows_to_dataframe([])
+
+    work = df.copy()
+    for column in SOURCE_COLUMNS:
+        if column not in work.columns:
+            work[column] = pd.NA
+    work = work[SOURCE_COLUMNS]
+
+    report_id_key = work["ReportId"].astype("string").fillna("").str.strip()
+    value_key = work["ValueDescription"].map(normalize_text)
+    has_report_id = report_id_key.str.len().gt(0)
+
+    with_id = work.loc[has_report_id].copy()
+    if not with_id.empty:
+        with_id["_report_id_key"] = report_id_key.loc[has_report_id]
+        with_id["_value_key"] = value_key.loc[has_report_id]
+        with_id = with_id.drop_duplicates(
+            ["_report_id_key", "_value_key"],
+            keep="last",
+        ).drop(columns=["_report_id_key", "_value_key"])
+
+    without_id = work.loc[~has_report_id].drop_duplicates(
+        SOURCE_COLUMNS,
+        keep="last",
+    )
+    return pd.concat([with_id, without_id], ignore_index=True)[SOURCE_COLUMNS]
+
+
+def fetch_report_data_in_chunks(
+    username: str,
+    password: str,
+    token: str,
+    auth_method: str,
+    start_date: date,
+    end_date_exclusive: date,
+    *,
+    chunk_days: int,
+    max_duration_seconds: int,
+    refresh_mode: str,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Fetch a large period as independent bounded OData pagination chains.
+
+    The old bootstrap used one chain from 1 January.  It could reach page 500,
+    spend hours downloading, then discard everything because ``hit_page_limit``
+    was true.  Date-windowed fetching keeps the same complete period while the
+    page cap applies to each short window instead of the whole year.
+    """
+    started_at = time.perf_counter()
+    windows = iter_refresh_date_windows(
+        start_date,
+        end_date_exclusive,
+        chunk_days,
+    )
+    if not windows:
+        return rows_to_dataframe([]), {
+            "rows": 0,
+            "kept_rows": 0,
+            "scanned_rows": 0,
+            "discarded_rows": 0,
+            "pages": 0,
+            "downloaded_mb": 0.0,
+            "fetch_seconds": 0.0,
+            "hit_page_limit": False,
+            "chunks_total": 0,
+            "chunks_completed": 0,
+            "chunk_days": chunk_days,
+        }
+
+    frames: list[pd.DataFrame] = []
+    total_pages = 0
+    total_scanned_rows = 0
+    total_downloaded_mb = 0.0
+    first_url = "-"
+    chunk_page_counts: list[int] = []
+
+    for chunk_index, (window_start, window_end) in enumerate(windows, start=1):
+        elapsed_seconds = time.perf_counter() - started_at
+        remaining_seconds = max_duration_seconds - int(elapsed_seconds)
+        if remaining_seconds <= 0:
+            raise TimeoutError(
+                f"Marorka {refresh_mode} refresh exceeded the "
+                f"{max_duration_seconds // 60}-minute safety limit before "
+                f"date window {chunk_index} of {len(windows)}."
+            )
+
+        update_snapshot_refresh_status(
+            state="running",
+            stage="fetching",
+            refresh_mode=refresh_mode,
+            chunk_index=chunk_index,
+            chunks_total=len(windows),
+            chunk_start_date=window_start.isoformat(),
+            chunk_end_date_exclusive=window_end.isoformat(),
+            pages_completed=total_pages,
+            rows_kept=sum(len(frame) for frame in frames),
+        )
+
+        chunk_df, chunk_metadata = fetch_report_data(
+            username=username,
+            password=password,
+            token=token,
+            auth_method=auth_method,
+            start_date=window_start,
+            end_date_exclusive=window_end,
+            max_duration_seconds=remaining_seconds,
+        )
+        if chunk_metadata.get("hit_page_limit"):
+            raise RuntimeError(
+                "The Marorka refresh reached the page safety limit inside "
+                f"date window {window_start.isoformat()} to "
+                f"{window_end.isoformat()}. Reduce "
+                "MARORKA_REFRESH_CHUNK_DAYS and retry; the previous snapshot "
+                "was kept unchanged."
+            )
+
+        if first_url == "-":
+            first_url = str(chunk_metadata.get("first_url", "-"))
+        frames.append(chunk_df)
+        chunk_pages = int(chunk_metadata.get("pages", 0) or 0)
+        chunk_page_counts.append(chunk_pages)
+        total_pages += chunk_pages
+        total_scanned_rows += int(chunk_metadata.get("scanned_rows", 0) or 0)
+        total_downloaded_mb += float(chunk_metadata.get("downloaded_mb", 0) or 0)
+
+        update_snapshot_refresh_status(
+            state="running",
+            stage="fetching",
+            refresh_mode=refresh_mode,
+            chunk_index=chunk_index,
+            chunks_total=len(windows),
+            chunk_start_date=window_start.isoformat(),
+            chunk_end_date_exclusive=window_end.isoformat(),
+            pages_completed=total_pages,
+            rows_kept=sum(len(frame) for frame in frames),
+        )
+
+    combined = deduplicate_compact_raw_rows(
+        pd.concat(frames, ignore_index=True) if frames else rows_to_dataframe([])
+    )
+    loaded_at_utc = datetime.now(timezone.utc)
+    metadata = {
+        "loaded_at_utc": loaded_at_utc.strftime("%d-%m-%Y %H:%M:%S UTC"),
+        "loaded_at_local": local_time_label(loaded_at_utc),
+        "rows": int(len(combined)),
+        "kept_rows": int(len(combined)),
+        "scanned_rows": total_scanned_rows,
+        "discarded_rows": max(total_scanned_rows - len(combined), 0),
+        "pages": total_pages,
+        "downloaded_mb": round(total_downloaded_mb, 2),
+        "fetch_seconds": round(time.perf_counter() - started_at, 2),
+        "first_url": first_url,
+        "hit_page_limit": False,
+        "chunks_total": len(windows),
+        "chunks_completed": len(windows),
+        "chunk_days": chunk_days,
+        "max_pages_per_chunk": MAX_ODATA_PAGES,
+        "largest_chunk_pages": max(chunk_page_counts) if chunk_page_counts else 0,
+        "refresh_window_start_date": start_date.isoformat(),
+        "refresh_window_end_date_exclusive": end_date_exclusive.isoformat(),
+    }
+    return combined, metadata
 
 @st.cache_data(ttl=API_CACHE_TTL_SECONDS, show_spinner=False)
 def cached_fetch_report_data(
@@ -3056,6 +3294,51 @@ def _atomic_write_text(path: Path, text_value: str) -> None:
                 pass
 
 
+def read_snapshot_refresh_status() -> dict[str, Any] | None:
+    try:
+        if not SNAPSHOT_REFRESH_STATUS_FILE.is_file():
+            return None
+        payload = json.loads(
+            SNAPSHOT_REFRESH_STATUS_FILE.read_text(encoding="utf-8")
+        )
+        return payload if isinstance(payload, dict) else None
+    except Exception:
+        return None
+
+
+def update_snapshot_refresh_status(**updates: Any) -> None:
+    """Persist small refresh-progress metadata for overlapping requests/users."""
+    payload = read_snapshot_refresh_status() or {}
+    payload.update(updates)
+    payload["updated_at_utc"] = datetime.now(timezone.utc).isoformat()
+    payload.setdefault("pid", os.getpid())
+    try:
+        _atomic_write_text(
+            SNAPSHOT_REFRESH_STATUS_FILE,
+            json.dumps(payload, indent=2, default=str),
+        )
+    except Exception:
+        # Progress reporting must never break the actual refresh.
+        return
+
+
+def snapshot_refresh_status_summary() -> str:
+    status = read_snapshot_refresh_status() or {}
+    stage = str(status.get("stage", "refreshing"))
+    refresh_mode = str(status.get("refresh_mode", "refresh"))
+    chunk_index = int(status.get("chunk_index", 0) or 0)
+    chunks_total = int(status.get("chunks_total", 0) or 0)
+    chunk_start = status.get("chunk_start_date")
+    chunk_end = status.get("chunk_end_date_exclusive")
+
+    parts = [f"{refresh_mode} {stage}"]
+    if chunk_index and chunks_total:
+        parts.append(f"window {chunk_index} of {chunks_total}")
+    if chunk_start and chunk_end:
+        parts.append(f"{chunk_start} to {chunk_end}")
+    return "; ".join(parts)
+
+
 def _atomic_write_parquet(df: pd.DataFrame, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_name(
@@ -3434,13 +3717,23 @@ def refresh_persistent_snapshot(
         minimum=5,
         maximum=720,
     )
-    fresh_raw_df, api_metadata = fetch_report_data(
+    chunk_days = read_int_secret(
+        "MARORKA_REFRESH_CHUNK_DAYS",
+        DEFAULT_REFRESH_CHUNK_DAYS,
+        minimum=7,
+        maximum=62,
+    )
+    refresh_end_date_exclusive = date.today() + timedelta(days=1)
+    fresh_raw_df, api_metadata = fetch_report_data_in_chunks(
         username=username,
         password=password,
         token=token,
         auth_method=auth_method,
         start_date=api_start_date,
+        end_date_exclusive=refresh_end_date_exclusive,
+        chunk_days=chunk_days,
         max_duration_seconds=refresh_max_minutes * 60,
+        refresh_mode=refresh_mode,
     )
 
     if api_metadata.get("hit_page_limit"):
@@ -3468,6 +3761,15 @@ def refresh_persistent_snapshot(
             "The refreshed compact dataset is empty. The previous snapshot was kept."
         )
 
+    update_snapshot_refresh_status(
+        state="running",
+        stage="transforming",
+        refresh_mode=refresh_mode,
+        chunks_total=int(api_metadata.get("chunks_total", 0) or 0),
+        chunk_index=int(api_metadata.get("chunks_completed", 0) or 0),
+        pages_completed=int(api_metadata.get("pages", 0) or 0),
+        rows_kept=int(len(combined_raw_df)),
+    )
     transform_started_at = time.perf_counter()
     transformed_df = transform_report_data(combined_raw_df)
     transform_seconds = round(time.perf_counter() - transform_started_at, 2)
@@ -3493,6 +3795,9 @@ def refresh_persistent_snapshot(
             "refresh_discarded_rows": int(api_metadata.get("discarded_rows", 0) or 0),
             "incremental_overlap_days": overlap_days,
             "refresh_max_minutes": refresh_max_minutes,
+            "refresh_chunk_days": chunk_days,
+            "refresh_chunks_total": int(api_metadata.get("chunks_total", 0) or 0),
+            "refresh_largest_chunk_pages": int(api_metadata.get("largest_chunk_pages", 0) or 0),
             "latest_report_start_date": (
                 combined_latest_date.isoformat()
                 if combined_latest_date is not None
@@ -3501,12 +3806,33 @@ def refresh_persistent_snapshot(
         }
     )
 
-    publish_prepared_snapshot(
+    update_snapshot_refresh_status(
+        state="running",
+        stage="publishing",
+        refresh_mode=refresh_mode,
+        chunks_total=int(api_metadata.get("chunks_total", 0) or 0),
+        chunk_index=int(api_metadata.get("chunks_completed", 0) or 0),
+        pages_completed=int(api_metadata.get("pages", 0) or 0),
+        rows_kept=int(len(combined_raw_df)),
+        transformed_rows=int(len(transformed_df)),
+    )
+    published_manifest = publish_prepared_snapshot(
         combined_raw_df,
         transformed_df,
         metadata,
         raw_signature,
         prepared_signature,
+    )
+    update_snapshot_refresh_status(
+        state="completed",
+        stage="ready",
+        refresh_mode=refresh_mode,
+        snapshot_generation=published_manifest.get("generation"),
+        chunks_total=int(api_metadata.get("chunks_total", 0) or 0),
+        chunk_index=int(api_metadata.get("chunks_completed", 0) or 0),
+        pages_completed=int(api_metadata.get("pages", 0) or 0),
+        rows_kept=int(len(combined_raw_df)),
+        transformed_rows=int(len(transformed_df)),
     )
     loaded_snapshot = load_prepared_snapshot(raw_signature, prepared_signature)
     if loaded_snapshot is None:
@@ -3640,15 +3966,25 @@ def run_warmup_if_requested() -> None:
                     )
                     if loaded_snapshot is None:
                         st.info(
-                            "Another refresh is already running. No prepared snapshot is available yet."
+                            "Another refresh is already running. No prepared snapshot is available yet. "
+                            f"Progress: {snapshot_refresh_status_summary()}."
                         )
                         st.stop()
                     refresh_skipped_due_to_lock = True
                     st.info(
-                        "Another refresh is already running. The existing prepared snapshot remains available to users."
+                        "Another refresh is already running. The existing prepared snapshot remains available to users. "
+                        f"Progress: {snapshot_refresh_status_summary()}."
                     )
                 else:
                     refresh_label = "full" if full_refresh else "incremental"
+                    update_snapshot_refresh_status(
+                        state="running",
+                        stage="starting",
+                        refresh_mode=refresh_label,
+                        chunk_index=0,
+                        chunks_total=0,
+                        started_at_utc=datetime.now(timezone.utc).isoformat(),
+                    )
                     with st.spinner(f"Running {refresh_label} API refresh and preparing snapshot..."):
                         loaded_snapshot = refresh_persistent_snapshot(
                             username,
@@ -3666,7 +4002,8 @@ def run_warmup_if_requested() -> None:
                 with snapshot_refresh_lock() as lock_acquired:
                     if not lock_acquired:
                         st.info(
-                            "A refresh is already running. Retry this warmup after it finishes."
+                            "A refresh is already running. Retry this warmup after it finishes. "
+                            f"Progress: {snapshot_refresh_status_summary()}."
                         )
                         st.stop()
                     # Re-check after taking the lock because another request may
@@ -3683,6 +4020,11 @@ def run_warmup_if_requested() -> None:
                             )
     except requests.HTTPError as exc:
         status = exc.response.status_code if exc.response is not None else "unknown"
+        update_snapshot_refresh_status(
+            state="failed",
+            stage="failed",
+            error=f"HTTP {status}",
+        )
         st.error(f"Warmup failed: Marorka API request failed with status {status}.")
         st.stop()
     except (
@@ -3692,6 +4034,11 @@ def run_warmup_if_requested() -> None:
         OSError,
         requests.RequestException,
     ) as exc:
+        update_snapshot_refresh_status(
+            state="failed",
+            stage="failed",
+            error=str(exc),
+        )
         st.error(f"Warmup failed: {exc}")
         st.stop()
 
@@ -3830,11 +4177,13 @@ def main() -> None:
     metadata = st.session_state.get("loaded_metadata")
     if not isinstance(all_df, pd.DataFrame) or not isinstance(metadata, dict):
         st.error(
-            "No prepared dashboard snapshot is available. Run the automated warmup once; "
-            "normal users will not be forced to wait for the full API pull."
+            "No prepared dashboard snapshot is available yet. "
+            f"Refresh status: {snapshot_refresh_status_summary()}. "
+            "The initial warmup now downloads the year in bounded date windows; "
+            "normal users will use the prepared snapshot after it is published."
         )
         st.code(
-            "?warmup=1&force=1&full=1&token=<WARMUP_TOKEN>",
+            "?warmup=1&force=1&token=<WARMUP_TOKEN>",
             language="text",
         )
         st.stop()
@@ -4030,6 +4379,9 @@ def main() -> None:
                     "Refresh mode",
                     "Refresh API start date",
                     "Refresh safety limit (minutes)",
+                    "Refresh chunk days",
+                    "Refresh chunks",
+                    "Largest chunk pages",
                     "Selected-vessel reports",
                     "All-vessel transformed reports",
                     "Kept compact raw rows",
@@ -4056,6 +4408,9 @@ def main() -> None:
                     metadata.get("refresh_mode", "-"),
                     metadata.get("refresh_api_start_date", "-"),
                     metadata.get("refresh_max_minutes", "-"),
+                    metadata.get("refresh_chunk_days", "-"),
+                    metadata.get("refresh_chunks_total", "-"),
+                    metadata.get("refresh_largest_chunk_pages", "-"),
                     f"{len(df):,}",
                     f"{len(all_df):,}",
                     f"{metadata.get('kept_rows', metadata.get('rows', 0)):,}",
