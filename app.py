@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import base64
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 from hashlib import sha256
 from html import escape
 from io import BytesIO
 import hmac
+import json
 import mimetypes
 import os
 import re
@@ -21,6 +23,11 @@ import requests
 import streamlit as st
 from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Streamlit Cloud runs on Linux.
+    fcntl = None
+
 
 # =============================================================================
 # Configuration
@@ -29,6 +36,16 @@ from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 APP_TITLE = "Performance KPIs"
 APP_DIR = Path(__file__).resolve().parent
 DEFAULT_BACKGROUND_IMAGE = APP_DIR / ""
+SNAPSHOT_DIR = APP_DIR / ".holy_trinity_cache"
+SNAPSHOT_MANIFEST_FILE = SNAPSHOT_DIR / "snapshot_manifest.json"
+SNAPSHOT_LOCK_FILE = SNAPSHOT_DIR / "snapshot_refresh.lock"
+SNAPSHOT_SCHEMA_VERSION = "2026-07-15-persistent-incremental-v1"
+SNAPSHOT_GENERATIONS_TO_KEEP = 2
+DEFAULT_INCREMENTAL_OVERLAP_DAYS = 14
+DEFAULT_INCREMENTAL_REFRESH_MAX_MINUTES = 45
+DEFAULT_FULL_REFRESH_MAX_MINUTES = 240
+API_REQUEST_TIMEOUT_SECONDS = 60
+API_REQUEST_MAX_ATTEMPTS = 3
 ODATA_ENDPOINT = "https://online.marorka.com/Odata/v1/ODataService.svc/ReportData"
 MAX_ODATA_PAGES = 500
 API_CACHE_TTL_SECONDS = 21600  # 6 hours; KPI filters use local data and do not refetch.
@@ -1349,6 +1366,7 @@ def fetch_report_data(
     token: str,
     auth_method: str,
     start_date: date,
+    max_duration_seconds: int | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     started_at = time.perf_counter()
     next_url = build_odata_url(start_date)
@@ -1365,11 +1383,25 @@ def fetch_report_data(
     with requests.Session() as session:
         session.headers.update(headers)
         for _ in range(MAX_ODATA_PAGES):
+            elapsed_seconds = time.perf_counter() - started_at
+            if (
+                max_duration_seconds is not None
+                and elapsed_seconds >= max_duration_seconds
+            ):
+                raise TimeoutError(
+                    f"Marorka refresh exceeded the {max_duration_seconds // 60}-minute safety limit."
+                )
             if next_url in seen_urls:
                 break
             seen_urls.add(next_url)
 
-            response = request_with_retry(session, next_url, auth=auth, timeout=90)
+            response = request_with_retry(
+                session,
+                next_url,
+                auth=auth,
+                timeout=API_REQUEST_TIMEOUT_SECONDS,
+                max_attempts=API_REQUEST_MAX_ATTEMPTS,
+            )
             total_bytes += len(response.content)
             response.raise_for_status()
             pages += 1
@@ -1583,6 +1615,7 @@ def transform_report_data(raw_df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError(f"Missing expected API columns: {', '.join(missing_columns)}")
 
     df = raw_df.copy()
+    df["ReportId"] = pd.to_numeric(df["ReportId"], errors="coerce").astype("Int64")
     df["StartDateTimeGMT"] = parse_datetime_series(df["StartDateTimeGMT"])
     df["EndDateTimeGMT"] = parse_datetime_series(df["EndDateTimeGMT"])
     df["LapTime"] = parse_numeric_series(df["LapTime"])
@@ -2919,6 +2952,649 @@ def raw_data_covers_request(
 
     return loaded_start_date <= requested_start_date
 
+
+# =============================================================================
+# Persistent prepared snapshot + incremental refresh helpers
+# =============================================================================
+
+
+def read_int_secret(
+    name: str,
+    default: int,
+    *,
+    minimum: int = 0,
+    maximum: int = 3650,
+) -> int:
+    try:
+        value = int(read_secret(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return min(max(value, minimum), maximum)
+
+
+@contextmanager
+def snapshot_refresh_lock() -> Any:
+    """Acquire a non-blocking process lock for API refresh work.
+
+    Scheduled warmups can overlap when a previous API pull is still running.
+    The second request now exits quickly instead of starting a second full pull.
+    """
+    SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+
+    if fcntl is not None:
+        handle = SNAPSHOT_LOCK_FILE.open("a+", encoding="utf-8")
+        try:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                yield False
+                return
+
+            handle.seek(0)
+            handle.truncate()
+            handle.write(
+                json.dumps(
+                    {
+                        "pid": os.getpid(),
+                        "started_at_utc": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
+            )
+            handle.flush()
+            yield True
+        finally:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            except Exception:
+                pass
+            handle.close()
+        return
+
+    # Portable fallback for local Windows testing.
+    lock_fd: int | None = None
+    try:
+        try:
+            lock_fd = os.open(
+                str(SNAPSHOT_LOCK_FILE),
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+            )
+        except FileExistsError:
+            yield False
+            return
+        os.write(
+            lock_fd,
+            json.dumps(
+                {
+                    "pid": os.getpid(),
+                    "started_at_utc": datetime.now(timezone.utc).isoformat(),
+                }
+            ).encode("utf-8"),
+        )
+        yield True
+    finally:
+        if lock_fd is not None:
+            os.close(lock_fd)
+            try:
+                SNAPSHOT_LOCK_FILE.unlink()
+            except FileNotFoundError:
+                pass
+
+
+def _atomic_write_text(path: Path, text_value: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(
+        f"{path.name}.{os.getpid()}.{int(time.time() * 1000)}.tmp"
+    )
+    try:
+        temp_path.write_text(text_value, encoding="utf-8")
+        os.replace(str(temp_path), str(path))
+    finally:
+        if temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
+
+
+def _atomic_write_parquet(df: pd.DataFrame, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(
+        f"{path.name}.{os.getpid()}.{int(time.time() * 1000)}.tmp.parquet"
+    )
+    try:
+        df.to_parquet(temp_path, index=False, compression="zstd")
+        if not temp_path.is_file() or temp_path.stat().st_size <= 0:
+            raise RuntimeError(f"Snapshot file was not created correctly: {temp_path}")
+        os.replace(str(temp_path), str(path))
+    finally:
+        if temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
+
+
+def normalize_raw_snapshot_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Use a stable nullable-string schema for raw long-form API rows."""
+    safe_df = df.copy()
+    for column in SOURCE_COLUMNS:
+        if column not in safe_df.columns:
+            safe_df[column] = pd.NA
+    safe_df = safe_df[SOURCE_COLUMNS]
+    for column in SOURCE_COLUMNS:
+        safe_df[column] = safe_df[column].astype("string")
+    if "ReportId" in safe_df.columns:
+        safe_df["ReportId"] = safe_df["ReportId"].str.replace(
+            r"\.0$", "", regex=True
+        )
+    return safe_df
+
+
+def normalize_transformed_snapshot_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize the prepared report table before writing it to Parquet."""
+    safe_df = df.copy()
+    text_columns = {"ShipName", "ReportType", "StateName"}
+    datetime_columns = {"StartDateTimeGMT", "EndDateTimeGMT"}
+
+    for column in safe_df.columns:
+        if column == "ReportId":
+            safe_df[column] = pd.to_numeric(
+                safe_df[column], errors="coerce"
+            ).astype("Int64")
+        elif column in text_columns:
+            safe_df[column] = safe_df[column].astype("string")
+        elif column in datetime_columns:
+            safe_df[column] = pd.to_datetime(
+                safe_df[column], errors="coerce", utc=True
+            )
+        else:
+            numeric_values = pd.to_numeric(safe_df[column], errors="coerce")
+            if numeric_values.notna().any() or safe_df[column].isna().all():
+                safe_df[column] = numeric_values
+    return safe_df
+
+
+def read_snapshot_manifest() -> dict[str, Any] | None:
+    try:
+        if not SNAPSHOT_MANIFEST_FILE.is_file():
+            return None
+        payload = json.loads(
+            SNAPSHOT_MANIFEST_FILE.read_text(encoding="utf-8")
+        )
+        return payload if isinstance(payload, dict) else None
+    except Exception:
+        return None
+
+
+def _snapshot_paths(manifest: dict[str, Any]) -> tuple[Path, Path]:
+    raw_name = str(manifest.get("raw_file", ""))
+    transformed_name = str(manifest.get("transformed_file", ""))
+    return SNAPSHOT_DIR / raw_name, SNAPSHOT_DIR / transformed_name
+
+
+@st.cache_data(show_spinner=False)
+def cached_read_transformed_snapshot(
+    generation: str,
+    transformed_file: str,
+) -> pd.DataFrame:
+    del generation  # Generation is a deliberate cache key.
+    return pd.read_parquet(transformed_file)
+
+
+@st.cache_data(show_spinner=False)
+def cached_read_raw_snapshot(
+    generation: str,
+    raw_file: str,
+) -> pd.DataFrame:
+    del generation  # Generation is a deliberate cache key.
+    return pd.read_parquet(raw_file)
+
+
+def load_prepared_snapshot(
+    requested_raw_signature: dict[str, Any],
+    requested_transform_signature: dict[str, Any],
+) -> tuple[pd.DataFrame, dict[str, Any], dict[str, Any]] | None:
+    manifest = read_snapshot_manifest()
+    if not manifest:
+        return None
+    if manifest.get("snapshot_schema_version") != SNAPSHOT_SCHEMA_VERSION:
+        return None
+
+    metadata = manifest.get("metadata") or {}
+    stored_raw_signature = manifest.get("request_signature") or {}
+    stored_transform_signature = manifest.get("transform_signature") or {}
+    if not raw_data_covers_request(
+        stored_raw_signature,
+        metadata,
+        requested_raw_signature,
+        API_FULL_START_DATE,
+    ):
+        return None
+    if stored_transform_signature != requested_transform_signature:
+        return None
+
+    generation = str(manifest.get("generation", ""))
+    raw_path, transformed_path = _snapshot_paths(manifest)
+    if not generation or not raw_path.is_file() or not transformed_path.is_file():
+        return None
+
+    try:
+        transformed_df = cached_read_transformed_snapshot(
+            generation,
+            str(transformed_path),
+        )
+    except Exception:
+        return None
+
+    if not isinstance(transformed_df, pd.DataFrame):
+        return None
+
+    metadata = dict(metadata)
+    metadata["loaded_from_snapshot"] = True
+    metadata["snapshot_generation"] = generation
+    metadata.setdefault("snapshot_saved_at_utc", manifest.get("saved_at_utc", "-"))
+    metadata.setdefault("snapshot_schema_version", SNAPSHOT_SCHEMA_VERSION)
+    return transformed_df, metadata, manifest
+
+
+def load_valid_raw_snapshot(
+    requested_raw_signature: dict[str, Any],
+    *,
+    use_shared_cache: bool,
+) -> tuple[pd.DataFrame, dict[str, Any], dict[str, Any]] | None:
+    manifest = read_snapshot_manifest()
+    if not manifest:
+        return None
+    if manifest.get("snapshot_schema_version") != SNAPSHOT_SCHEMA_VERSION:
+        return None
+
+    metadata = manifest.get("metadata") or {}
+    stored_raw_signature = manifest.get("request_signature") or {}
+    if not raw_data_covers_request(
+        stored_raw_signature,
+        metadata,
+        requested_raw_signature,
+        API_FULL_START_DATE,
+    ):
+        return None
+
+    generation = str(manifest.get("generation", ""))
+    raw_path, _ = _snapshot_paths(manifest)
+    if not generation or not raw_path.is_file():
+        return None
+
+    try:
+        if use_shared_cache:
+            raw_df = cached_read_raw_snapshot(generation, str(raw_path))
+        else:
+            raw_df = pd.read_parquet(raw_path)
+    except Exception:
+        return None
+
+    if not isinstance(raw_df, pd.DataFrame):
+        return None
+    return raw_df, dict(metadata), manifest
+
+
+def _snapshot_generation() -> str:
+    return (
+        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        + f"-{os.getpid()}"
+    )
+
+
+def _cleanup_old_snapshot_generations() -> None:
+    try:
+        raw_files = sorted(
+            SNAPSHOT_DIR.glob("raw_*.parquet"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        transformed_files = sorted(
+            SNAPSHOT_DIR.glob("transformed_*.parquet"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        keep_generations: set[str] = set()
+        for path in [*raw_files, *transformed_files]:
+            stem = path.stem
+            generation = stem.split("_", 1)[1] if "_" in stem else ""
+            if generation:
+                keep_generations.add(generation)
+            if len(keep_generations) >= SNAPSHOT_GENERATIONS_TO_KEEP:
+                break
+
+        for path in [*raw_files, *transformed_files]:
+            stem = path.stem
+            generation = stem.split("_", 1)[1] if "_" in stem else ""
+            if generation and generation not in keep_generations:
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+
+        for temp_path in SNAPSHOT_DIR.glob("*.tmp*"):
+            try:
+                if time.time() - temp_path.stat().st_mtime > 3600:
+                    temp_path.unlink()
+            except OSError:
+                pass
+    except Exception:
+        return
+
+
+def publish_prepared_snapshot(
+    raw_df: pd.DataFrame,
+    transformed_df: pd.DataFrame,
+    metadata: dict[str, Any],
+    raw_signature: dict[str, Any],
+    prepared_signature: dict[str, Any],
+) -> dict[str, Any]:
+    """Publish raw + fully transformed data atomically through a manifest pointer."""
+    generation = _snapshot_generation()
+    raw_file = SNAPSHOT_DIR / f"raw_{generation}.parquet"
+    transformed_file = SNAPSHOT_DIR / f"transformed_{generation}.parquet"
+
+    normalized_raw = normalize_raw_snapshot_dataframe(raw_df)
+    normalized_transformed = normalize_transformed_snapshot_dataframe(transformed_df)
+
+    _atomic_write_parquet(normalized_raw, raw_file)
+    _atomic_write_parquet(normalized_transformed, transformed_file)
+
+    saved_at_utc = datetime.now(timezone.utc).strftime("%d-%m-%Y %H:%M:%S UTC")
+    manifest_metadata = dict(metadata)
+    manifest_metadata["snapshot_generation"] = generation
+    manifest_metadata["snapshot_saved_at_utc"] = saved_at_utc
+    manifest_metadata["snapshot_schema_version"] = SNAPSHOT_SCHEMA_VERSION
+    manifest_metadata["loaded_start_date"] = raw_signature["start_date"]
+
+    manifest = {
+        "snapshot_schema_version": SNAPSHOT_SCHEMA_VERSION,
+        "generation": generation,
+        "raw_file": raw_file.name,
+        "transformed_file": transformed_file.name,
+        "request_signature": raw_signature,
+        "transform_signature": prepared_signature,
+        "metadata": manifest_metadata,
+        "saved_at_utc": saved_at_utc,
+    }
+    _atomic_write_text(
+        SNAPSHOT_MANIFEST_FILE,
+        json.dumps(manifest, indent=2, default=str),
+    )
+
+    # Remove stale in-memory objects only after the new files and manifest exist.
+    cached_read_raw_snapshot.clear()
+    cached_read_transformed_snapshot.clear()
+    cached_fetch_report_data.clear()
+    cached_transform_report_data.clear()
+
+    # Seed the shared prepared-data cache now, so the next browser session reads
+    # the finished table rather than repeating the transform.
+    cached_read_transformed_snapshot(generation, str(transformed_file))
+    _cleanup_old_snapshot_generations()
+    return manifest
+
+
+def latest_raw_report_date(raw_df: pd.DataFrame) -> date | None:
+    if raw_df.empty or "StartDateTimeGMT" not in raw_df.columns:
+        return None
+    parsed = parse_datetime_series(raw_df["StartDateTimeGMT"])
+    if parsed.notna().any():
+        return parsed.max().date()
+    return None
+
+
+def merge_incremental_raw_data(
+    existing_raw_df: pd.DataFrame,
+    fresh_raw_df: pd.DataFrame,
+    refresh_start_date: date,
+) -> pd.DataFrame:
+    """Replace the overlap window, then deduplicate by report/value identity."""
+    existing = normalize_raw_snapshot_dataframe(existing_raw_df)
+    fresh = normalize_raw_snapshot_dataframe(fresh_raw_df)
+
+    existing_dates = parse_datetime_series(existing["StartDateTimeGMT"])
+    refresh_start_timestamp = pd.Timestamp(refresh_start_date, tz="UTC")
+    keep_old_mask = existing_dates.isna() | existing_dates.le(refresh_start_timestamp)
+    merged = pd.concat([existing.loc[keep_old_mask], fresh], ignore_index=True)
+
+    report_id_key = merged["ReportId"].astype("string").fillna("")
+    value_key = merged["ValueDescription"].map(normalize_text)
+    has_report_id = report_id_key.str.len().gt(0)
+
+    with_id = merged.loc[has_report_id].copy()
+    with_id["_report_id_key"] = report_id_key.loc[has_report_id]
+    with_id["_value_key"] = value_key.loc[has_report_id]
+    with_id = with_id.drop_duplicates(
+        ["_report_id_key", "_value_key"],
+        keep="last",
+    ).drop(columns=["_report_id_key", "_value_key"])
+
+    without_id = merged.loc[~has_report_id].drop_duplicates(
+        SOURCE_COLUMNS,
+        keep="last",
+    )
+    merged = pd.concat([with_id, without_id], ignore_index=True)
+    return normalize_raw_snapshot_dataframe(merged)
+
+
+def refresh_persistent_snapshot(
+    username: str,
+    password: str,
+    token: str,
+    auth_method: str,
+    *,
+    full_refresh: bool,
+) -> tuple[pd.DataFrame, dict[str, Any], dict[str, Any]]:
+    """Refresh once, transform once, persist both layers, and return prepared data.
+
+    Scheduled force=1 refreshes are incremental by default. Use full=1 only for
+    an occasional complete rebuild or when no prior snapshot exists.
+    """
+    raw_signature = request_signature(username, auth_method, API_FULL_START_DATE)
+    prepared_signature = transform_signature(raw_signature)
+    overlap_days = read_int_secret(
+        "MARORKA_INCREMENTAL_OVERLAP_DAYS",
+        DEFAULT_INCREMENTAL_OVERLAP_DAYS,
+        minimum=1,
+        maximum=90,
+    )
+
+    existing_snapshot = None
+    if not full_refresh:
+        existing_snapshot = load_valid_raw_snapshot(
+            raw_signature,
+            use_shared_cache=False,
+        )
+
+    existing_raw_df: pd.DataFrame | None = None
+    if existing_snapshot is not None:
+        existing_raw_df = existing_snapshot[0]
+
+    refresh_mode = "full"
+    api_start_date = API_FULL_START_DATE
+    if isinstance(existing_raw_df, pd.DataFrame) and not existing_raw_df.empty:
+        latest_date = latest_raw_report_date(existing_raw_df)
+        if latest_date is not None:
+            # One extra day compensates for the API's strict `gt` date filter.
+            api_start_date = max(
+                API_FULL_START_DATE,
+                latest_date - timedelta(days=overlap_days + 1),
+            )
+            refresh_mode = "incremental"
+
+    refresh_max_minutes = read_int_secret(
+        "MARORKA_FULL_REFRESH_MAX_MINUTES"
+        if refresh_mode == "full"
+        else "MARORKA_INCREMENTAL_REFRESH_MAX_MINUTES",
+        DEFAULT_FULL_REFRESH_MAX_MINUTES
+        if refresh_mode == "full"
+        else DEFAULT_INCREMENTAL_REFRESH_MAX_MINUTES,
+        minimum=5,
+        maximum=720,
+    )
+    fresh_raw_df, api_metadata = fetch_report_data(
+        username=username,
+        password=password,
+        token=token,
+        auth_method=auth_method,
+        start_date=api_start_date,
+        max_duration_seconds=refresh_max_minutes * 60,
+    )
+
+    if api_metadata.get("hit_page_limit"):
+        raise RuntimeError(
+            "The Marorka refresh reached the page safety limit. "
+            "The previous prepared snapshot was kept unchanged."
+        )
+    if int(api_metadata.get("scanned_rows", 0) or 0) == 0:
+        raise RuntimeError(
+            "The Marorka refresh returned zero source rows. "
+            "The previous prepared snapshot was kept unchanged."
+        )
+
+    if refresh_mode == "incremental" and existing_raw_df is not None:
+        combined_raw_df = merge_incremental_raw_data(
+            existing_raw_df,
+            fresh_raw_df,
+            api_start_date,
+        )
+    else:
+        combined_raw_df = normalize_raw_snapshot_dataframe(fresh_raw_df)
+
+    if combined_raw_df.empty:
+        raise RuntimeError(
+            "The refreshed compact dataset is empty. The previous snapshot was kept."
+        )
+
+    transform_started_at = time.perf_counter()
+    transformed_df = transform_report_data(combined_raw_df)
+    transform_seconds = round(time.perf_counter() - transform_started_at, 2)
+    if transformed_df.empty:
+        raise RuntimeError(
+            "The refreshed prepared dataset is empty. The previous snapshot was kept."
+        )
+
+    combined_latest_date = latest_raw_report_date(combined_raw_df)
+    metadata = dict(api_metadata)
+    metadata.update(
+        {
+            "loaded_start_date": API_FULL_START_DATE.isoformat(),
+            "rows": int(len(combined_raw_df)),
+            "kept_rows": int(len(combined_raw_df)),
+            "snapshot_raw_rows": int(len(combined_raw_df)),
+            "transformed_rows": int(len(transformed_df)),
+            "transform_seconds": transform_seconds,
+            "refresh_mode": refresh_mode,
+            "refresh_api_start_date": api_start_date.isoformat(),
+            "refresh_kept_rows": int(len(fresh_raw_df)),
+            "refresh_scanned_rows": int(api_metadata.get("scanned_rows", 0) or 0),
+            "refresh_discarded_rows": int(api_metadata.get("discarded_rows", 0) or 0),
+            "incremental_overlap_days": overlap_days,
+            "refresh_max_minutes": refresh_max_minutes,
+            "latest_report_start_date": (
+                combined_latest_date.isoformat()
+                if combined_latest_date is not None
+                else "-"
+            ),
+        }
+    )
+
+    publish_prepared_snapshot(
+        combined_raw_df,
+        transformed_df,
+        metadata,
+        raw_signature,
+        prepared_signature,
+    )
+    loaded_snapshot = load_prepared_snapshot(raw_signature, prepared_signature)
+    if loaded_snapshot is None:
+        raise RuntimeError("The new prepared snapshot could not be re-opened after save.")
+    return loaded_snapshot
+
+
+def rebuild_prepared_snapshot_from_raw(
+    username: str,
+    auth_method: str,
+) -> tuple[pd.DataFrame, dict[str, Any], dict[str, Any]] | None:
+    """Rebuild calculated data from the existing raw snapshot without an API call."""
+    raw_signature = request_signature(username, auth_method, API_FULL_START_DATE)
+    prepared_signature = transform_signature(raw_signature)
+    raw_snapshot = load_valid_raw_snapshot(
+        raw_signature,
+        use_shared_cache=False,
+    )
+    if raw_snapshot is None:
+        return None
+
+    raw_df, previous_metadata, _ = raw_snapshot
+    transform_started_at = time.perf_counter()
+    transformed_df = transform_report_data(raw_df)
+    transform_seconds = round(time.perf_counter() - transform_started_at, 2)
+    if transformed_df.empty:
+        return None
+
+    metadata = dict(previous_metadata)
+    metadata.update(
+        {
+            "refresh_mode": "transform_only",
+            "api_refresh_skipped": True,
+            "rows": int(len(raw_df)),
+            "kept_rows": int(len(raw_df)),
+            "snapshot_raw_rows": int(len(raw_df)),
+            "transformed_rows": int(len(transformed_df)),
+            "transform_seconds": transform_seconds,
+            "loaded_start_date": API_FULL_START_DATE.isoformat(),
+        }
+    )
+    publish_prepared_snapshot(
+        raw_df,
+        transformed_df,
+        metadata,
+        raw_signature,
+        prepared_signature,
+    )
+    return load_prepared_snapshot(raw_signature, prepared_signature)
+
+
+def ensure_prepared_snapshot(
+    username: str,
+    auth_method: str,
+) -> tuple[pd.DataFrame, dict[str, Any], dict[str, Any]] | None:
+    raw_signature = request_signature(username, auth_method, API_FULL_START_DATE)
+    prepared_signature = transform_signature(raw_signature)
+    prepared = load_prepared_snapshot(raw_signature, prepared_signature)
+    if prepared is not None:
+        return prepared
+    return rebuild_prepared_snapshot_from_raw(username, auth_method)
+
+
+def activate_prepared_snapshot_session(
+    transformed_df: pd.DataFrame,
+    metadata: dict[str, Any],
+    manifest: dict[str, Any],
+    raw_signature: dict[str, Any],
+    prepared_signature: dict[str, Any],
+) -> None:
+    """Keep only the prepared table in normal browser sessions."""
+    st.session_state.pop("loaded_raw_df", None)
+    st.session_state["loaded_transformed_df"] = transformed_df
+    st.session_state["loaded_metadata"] = dict(metadata)
+    st.session_state["loaded_request_signature"] = raw_signature
+    st.session_state["loaded_transform_signature"] = prepared_signature
+    st.session_state["loaded_snapshot_generation"] = manifest.get("generation")
+
+
+def load_raw_snapshot_for_diagnostics(
+    requested_raw_signature: dict[str, Any],
+) -> pd.DataFrame | None:
+    raw_snapshot = load_valid_raw_snapshot(
+        requested_raw_signature,
+        use_shared_cache=False,
+    )
+    return raw_snapshot[0] if raw_snapshot is not None else None
+
 # =============================================================================
 # Main app
 # =============================================================================
@@ -2926,12 +3602,11 @@ def raw_data_covers_request(
 
 
 def run_warmup_if_requested() -> None:
-    """Warm up API/cache via a secret-token URL without showing the normal dashboard UI."""
+    """Refresh or seed the prepared snapshot without executing the normal UI."""
     if not is_warmup_request():
         return
 
     apply_custom_css()
-
     if not warmup_token_is_valid():
         st.error("Invalid or missing warmup token.")
         st.stop()
@@ -2940,50 +3615,105 @@ def run_warmup_if_requested() -> None:
     password = read_secret("MARORKA_PASSWORD")
     token = read_secret("MARORKA_TOKEN")
     auth_method = read_secret("MARORKA_AUTH_METHOD", "basic")
-    start_date = API_FULL_START_DATE
 
     if auth_method.lower() in {"basic", "digest"} and (not username or not password):
         st.error("Warmup failed: MARORKA_USERNAME and MARORKA_PASSWORD are required.")
         st.stop()
 
     force_refresh = get_query_param("force", "0") == "1"
+    full_refresh = get_query_param("full", "0") == "1"
+    warmup_started_at = time.perf_counter()
+    loaded_snapshot = None
+    refresh_skipped_due_to_lock = False
+
+    raw_signature = request_signature(username, auth_method, API_FULL_START_DATE)
+    prepared_signature = transform_signature(raw_signature)
 
     try:
-        with st.spinner("Warming up API..."):
-            if force_refresh:
-                # Clear first, then refill each shared cache exactly once.
-                # This avoids the previous uncached fetch + post-fetch clear pattern,
-                # which left the next normal app session with an empty cache.
-                cached_fetch_report_data.clear()
-                cached_transform_report_data.clear()
-
-            raw_df, metadata = cached_fetch_report_data(
-                username=username,
-                password=password,
-                token=token,
-                auth_method=auth_method,
-                start_date=start_date,
-                cache_marker=raw_value_alias_signature(),
+        if force_refresh:
+            with snapshot_refresh_lock() as lock_acquired:
+                if not lock_acquired:
+                    # Never rebuild or call the API while another request owns the lock.
+                    loaded_snapshot = load_prepared_snapshot(
+                        raw_signature,
+                        prepared_signature,
+                    )
+                    if loaded_snapshot is None:
+                        st.info(
+                            "Another refresh is already running. No prepared snapshot is available yet."
+                        )
+                        st.stop()
+                    refresh_skipped_due_to_lock = True
+                    st.info(
+                        "Another refresh is already running. The existing prepared snapshot remains available to users."
+                    )
+                else:
+                    refresh_label = "full" if full_refresh else "incremental"
+                    with st.spinner(f"Running {refresh_label} API refresh and preparing snapshot..."):
+                        loaded_snapshot = refresh_persistent_snapshot(
+                            username,
+                            password,
+                            token,
+                            auth_method,
+                            full_refresh=full_refresh,
+                        )
+        else:
+            loaded_snapshot = load_prepared_snapshot(
+                raw_signature,
+                prepared_signature,
             )
-            all_df = cached_transform_report_data(raw_df)
+            if loaded_snapshot is None:
+                with snapshot_refresh_lock() as lock_acquired:
+                    if not lock_acquired:
+                        st.info(
+                            "A refresh is already running. Retry this warmup after it finishes."
+                        )
+                        st.stop()
+                    # Re-check after taking the lock because another request may
+                    # have finished between the first read and lock acquisition.
+                    loaded_snapshot = ensure_prepared_snapshot(username, auth_method)
+                    if loaded_snapshot is None:
+                        with st.spinner("Creating the first full prepared snapshot..."):
+                            loaded_snapshot = refresh_persistent_snapshot(
+                                username,
+                                password,
+                                token,
+                                auth_method,
+                                full_refresh=True,
+                            )
     except requests.HTTPError as exc:
         status = exc.response.status_code if exc.response is not None else "unknown"
         st.error(f"Warmup failed: Marorka API request failed with status {status}.")
         st.stop()
-    except (MarorkaConfigError, ValueError, requests.RequestException) as exc:
+    except (
+        MarorkaConfigError,
+        ValueError,
+        RuntimeError,
+        OSError,
+        requests.RequestException,
+    ) as exc:
         st.error(f"Warmup failed: {exc}")
         st.stop()
 
-    metadata = metadata.copy()
-    metadata["transformed_rows"] = int(len(all_df))
+    if loaded_snapshot is None:
+        st.error("Warmup did not produce a prepared snapshot.")
+        st.stop()
 
-    st.success("Warmup OK.")
+    prepared_df, metadata, manifest = loaded_snapshot
+    st.success("Warmup OK. Prepared snapshot is ready for users.")
     st.write(
         {
+            "snapshot_generation": manifest.get("generation"),
+            "refresh_mode": metadata.get("refresh_mode", "snapshot_only"),
             "last_api_load_local": metadata.get("loaded_at_local"),
-            "compact_api_rows": int(len(raw_df)),
-            "dashboard_rows": int(len(all_df)),
-            "force_refresh": get_query_param("force", "0") == "1",
+            "snapshot_raw_rows": int(metadata.get("snapshot_raw_rows", metadata.get("rows", 0)) or 0),
+            "dashboard_rows": int(len(prepared_df)),
+            "api_pages_last_refresh": int(metadata.get("pages", 0) or 0),
+            "refresh_api_start_date": metadata.get("refresh_api_start_date", "-"),
+            "warmup_seconds": round(time.perf_counter() - warmup_started_at, 2),
+            "force_refresh": force_refresh,
+            "full_refresh": full_refresh,
+            "refresh_skipped_due_to_lock": refresh_skipped_due_to_lock,
         }
     )
     st.stop()
@@ -3007,88 +3737,107 @@ def main() -> None:
     render_header(selected_group, selected_vessels)
 
     raw_signature = request_signature(username, auth_method, start_date)
+    prepared_signature = transform_signature(raw_signature)
     current_raw_signature = st.session_state.get("loaded_request_signature")
-    raw_df, df, metadata = get_loaded_state()
+    current_transform_signature = st.session_state.get("loaded_transform_signature")
+    session_generation = st.session_state.get("loaded_snapshot_generation")
+    _, all_df, metadata = get_loaded_state()
 
-    needs_raw_load = (
-        refresh
-        or raw_df is None
-        or metadata is None
-        or not raw_data_covers_request(current_raw_signature, metadata, raw_signature, start_date)
+    current_manifest = read_snapshot_manifest()
+    current_generation = (
+        current_manifest.get("generation")
+        if isinstance(current_manifest, dict)
+        else None
+    )
+    session_is_ready = (
+        isinstance(all_df, pd.DataFrame)
+        and isinstance(metadata, dict)
+        and raw_data_covers_request(
+            current_raw_signature,
+            metadata,
+            raw_signature,
+            start_date,
+        )
+        and current_transform_signature == prepared_signature
+        and session_generation == current_generation
     )
 
-    if needs_raw_load:
+    loaded_snapshot = None
+    if refresh:
         try:
-            spinner_text = (
-                "Refreshing API..."
-                if refresh
-                else "Loading API..."
-            )
-            with st.spinner(spinner_text):
-                if refresh:
-                    # Clear first, then refill the shared fetch and transform caches
-                    # exactly once. The refreshed result is also copied into this
-                    # user's session state, so new tabs and new users can reuse it.
-                    cached_fetch_report_data.clear()
-                    cached_transform_report_data.clear()
-
-                    raw_df, metadata = cached_fetch_report_data(
-                        username=username,
-                        password=password,
-                        token=token,
-                        auth_method=auth_method,
-                        start_date=start_date,
-                        cache_marker=raw_signature["raw_value_alias_signature"],
+            with snapshot_refresh_lock() as lock_acquired:
+                if not lock_acquired:
+                    st.warning(
+                        "Another API refresh is already running. The current prepared snapshot was kept."
                     )
-                    fresh_df = cached_transform_report_data(raw_df)
-                    set_loaded_raw_state(raw_df, metadata, raw_signature)
-                    set_loaded_transform_state(fresh_df, transform_signature(raw_signature))
-                    df = fresh_df
                 else:
-                    raw_df, metadata = cached_fetch_report_data(
-                        username=username,
-                        password=password,
-                        token=token,
-                        auth_method=auth_method,
-                        start_date=start_date,
-                        cache_marker=raw_signature["raw_value_alias_signature"],
-                    )
-                    set_loaded_raw_state(raw_df, metadata, raw_signature)
-                    df = None
+                    with st.spinner("Refreshing recent API data and preparing the new snapshot..."):
+                        loaded_snapshot = refresh_persistent_snapshot(
+                            username,
+                            password,
+                            token,
+                            auth_method,
+                            full_refresh=False,
+                        )
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else "unknown"
-            st.error(f"Marorka API request failed with status {status}.")
-            st.caption("If credentials are correct, try MARORKA_AUTH_METHOD = 'digest'.")
-            if exc.response is not None and exc.response.request is not None:
-                st.code(exc.response.request.url, language="text")
-            st.stop()
-        except (MarorkaConfigError, ValueError, requests.RequestException) as exc:
-            st.error(str(exc))
+            if session_is_ready:
+                st.warning(
+                    f"API refresh failed with status {status}. The current prepared snapshot was kept."
+                )
+            else:
+                st.error(f"Marorka API request failed with status {status}.")
+                st.stop()
+        except (
+            MarorkaConfigError,
+            ValueError,
+            RuntimeError,
+            OSError,
+            requests.RequestException,
+        ) as exc:
+            if session_is_ready:
+                st.warning(f"API refresh failed. The current prepared snapshot was kept. Details: {exc}")
+            else:
+                st.error(str(exc))
+                st.stop()
+
+    if loaded_snapshot is None and not session_is_ready:
+        loaded_snapshot = load_prepared_snapshot(raw_signature, prepared_signature)
+
+    if loaded_snapshot is None and not session_is_ready:
+        # A code-only calculation change can be rebuilt from the raw snapshot
+        # without calling Marorka again.
+        try:
+            with snapshot_refresh_lock() as lock_acquired:
+                if lock_acquired:
+                    with st.spinner("Loading the prepared dashboard snapshot..."):
+                        loaded_snapshot = ensure_prepared_snapshot(username, auth_method)
+        except (ValueError, RuntimeError, OSError) as exc:
+            st.error(f"Prepared snapshot could not be loaded: {exc}")
             st.stop()
 
-    transform_sig = transform_signature(raw_signature)
-    current_transform_sig = st.session_state.get("loaded_transform_signature")
+    if loaded_snapshot is not None:
+        all_df, metadata, manifest = loaded_snapshot
+        activate_prepared_snapshot_session(
+            all_df,
+            metadata,
+            manifest,
+            raw_signature,
+            prepared_signature,
+        )
+
     all_df = st.session_state.get("loaded_transformed_df")
     metadata = st.session_state.get("loaded_metadata")
-    raw_df = st.session_state.get("loaded_raw_df")
-
-    if raw_df is None or metadata is None:
-        st.info("Loading Marorka data automatically. Use **Refresh API data** to force a new API pull.")
+    if not isinstance(all_df, pd.DataFrame) or not isinstance(metadata, dict):
+        st.error(
+            "No prepared dashboard snapshot is available. Run the automated warmup once; "
+            "normal users will not be forced to wait for the full API pull."
+        )
+        st.code(
+            "?warmup=1&force=1&full=1&token=<WARMUP_TOKEN>",
+            language="text",
+        )
         st.stop()
-
-    if all_df is None or current_transform_sig != transform_sig:
-        try:
-            transform_started_at = time.perf_counter()
-            all_df = cached_transform_report_data(raw_df)
-            set_loaded_transform_state(all_df, transform_sig)
-            metadata = st.session_state.get("loaded_metadata")
-            if isinstance(metadata, dict):
-                metadata["transform_seconds"] = round(time.perf_counter() - transform_started_at, 2)
-                metadata["transformed_rows"] = int(len(all_df))
-                st.session_state["loaded_metadata"] = metadata
-        except (ValueError, TypeError) as exc:
-            st.error(str(exc))
-            st.stop()
 
     view_sig = view_signature(raw_signature, selected_vessels, start_date, end_date)
     df = filter_reports_for_selection(all_df, selected_vessels, start_date, end_date)
@@ -3179,26 +3928,58 @@ def main() -> None:
         st.markdown('<div class="section-title">Fleet KPIs</div>', unsafe_allow_html=True)
         render_kpis(slip_kpi_df, me_sfoc_kpi_df, boiler_kpi_df)
 
-        kpi_excel_bytes = to_kpi_excel_bytes(
-            selected_group=selected_group,
-            selected_vessels=selected_vessels,
-            selected_start=dashboard_start_date,
-            selected_end=dashboard_end_date,
-            slip_kpi_df=slip_kpi_df,
-            me_sfoc_kpi_df=me_sfoc_kpi_df,
-            boiler_kpi_df=boiler_kpi_df,
-            slip_period=(slip_start_date, slip_end_date),
-            me_sfoc_period=(me_sfoc_start_date, me_sfoc_end_date),
-            boiler_period=(boiler_start_date, boiler_end_date),
-            performance_filter_specs=performance_filter_specs,
-            boiler_filter_specs=boiler_filter_specs,
+        kpi_export_signature_payload = "|".join(
+            [
+                selected_group,
+                ",".join(selected_vessels),
+                slip_start_date.isoformat(),
+                slip_end_date.isoformat(),
+                me_sfoc_start_date.isoformat(),
+                me_sfoc_end_date.isoformat(),
+                boiler_start_date.isoformat(),
+                boiler_end_date.isoformat(),
+                str(len(slip_kpi_df)),
+                str(len(me_sfoc_kpi_df)),
+                str(len(boiler_kpi_df)),
+                *filter_specs_to_text(performance_filter_specs),
+                *filter_specs_to_text(boiler_filter_specs),
+            ]
         )
-        st.download_button(
-            "Download KPI summary Excel",
-            data=kpi_excel_bytes,
-            file_name="kpi_summary_report.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+        kpi_export_signature = sha256(
+            kpi_export_signature_payload.encode("utf-8")
+        ).hexdigest()
+        if st.session_state.get("kpi_summary_export_signature") != kpi_export_signature:
+            st.session_state.pop("kpi_summary_export_bytes", None)
+
+        kpi_export_ready = "kpi_summary_export_bytes" in st.session_state
+        if st.button("Prepare KPI summary Excel", type="primary"):
+            with st.spinner("Preparing KPI summary Excel..."):
+                st.session_state["kpi_summary_export_bytes"] = to_kpi_excel_bytes(
+                    selected_group=selected_group,
+                    selected_vessels=selected_vessels,
+                    selected_start=dashboard_start_date,
+                    selected_end=dashboard_end_date,
+                    slip_kpi_df=slip_kpi_df,
+                    me_sfoc_kpi_df=me_sfoc_kpi_df,
+                    boiler_kpi_df=boiler_kpi_df,
+                    slip_period=(slip_start_date, slip_end_date),
+                    me_sfoc_period=(me_sfoc_start_date, me_sfoc_end_date),
+                    boiler_period=(boiler_start_date, boiler_end_date),
+                    performance_filter_specs=performance_filter_specs,
+                    boiler_filter_specs=boiler_filter_specs,
+                )
+                st.session_state["kpi_summary_export_signature"] = kpi_export_signature
+            kpi_export_ready = True
+
+        if kpi_export_ready:
+            st.download_button(
+                "Download KPI summary Excel",
+                data=st.session_state["kpi_summary_export_bytes"],
+                file_name="kpi_summary_report.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        else:
+            st.caption("KPI Excel is prepared on demand so normal dashboard loads stay faster.")
 
         if (
             len(slip_kpi_df) != len(dashboard_df)
@@ -3243,6 +4024,12 @@ def main() -> None:
                     "API loaded at",
                     "API loaded local time",
                     "API loaded from start date",
+                    "Loaded from prepared snapshot",
+                    "Snapshot generation",
+                    "Snapshot saved at",
+                    "Refresh mode",
+                    "Refresh API start date",
+                    "Refresh safety limit (minutes)",
                     "Selected-vessel reports",
                     "All-vessel transformed reports",
                     "Kept compact raw rows",
@@ -3263,6 +4050,12 @@ def main() -> None:
                     metadata.get("loaded_at_utc", "-"),
                     metadata.get("loaded_at_local", "-"),
                     metadata.get("loaded_start_date", "-"),
+                    str(metadata.get("loaded_from_snapshot", False)),
+                    metadata.get("snapshot_generation", "-"),
+                    metadata.get("snapshot_saved_at_utc", "-"),
+                    metadata.get("refresh_mode", "-"),
+                    metadata.get("refresh_api_start_date", "-"),
+                    metadata.get("refresh_max_minutes", "-"),
                     f"{len(df):,}",
                     f"{len(all_df):,}",
                     f"{metadata.get('kept_rows', metadata.get('rows', 0)):,}",
@@ -3283,11 +4076,20 @@ def main() -> None:
 
         st.markdown('<div class="section-title">Compact Raw ValueDescription Counts</div>', unsafe_allow_html=True)
         if st.button("Calculate raw value counts"):
-            value_counts = raw_df.get("ValueDescription", pd.Series(dtype="object")).value_counts(dropna=False).reset_index()
-            value_counts.columns = ["ValueDescription", "Compact raw rows"]
-            st.dataframe(value_counts.head(200), use_container_width=True, hide_index=True)
+            with st.spinner("Reading compact raw snapshot..."):
+                diagnostic_raw_df = load_raw_snapshot_for_diagnostics(raw_signature)
+            if diagnostic_raw_df is None:
+                st.warning("The compact raw snapshot could not be read.")
+            else:
+                value_counts = (
+                    diagnostic_raw_df.get("ValueDescription", pd.Series(dtype="object"))
+                    .value_counts(dropna=False)
+                    .reset_index()
+                )
+                value_counts.columns = ["ValueDescription", "Compact raw rows"]
+                st.dataframe(value_counts.head(200), use_container_width=True, hide_index=True)
         else:
-            st.caption("Raw value counts are calculated on demand so diagnostics do not slow normal loads.")
+            st.caption("Raw value counts are read from Parquet only on demand so normal users load the prepared table faster.")
 
     with tab_data:
         export_df = df.sort_values(["ShipName", "EndDateTimeGMT"], ascending=[True, False])
