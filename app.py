@@ -57,7 +57,7 @@ UI_DATE_INPUT_FORMAT = "DD/MM/YYYY"
 DISPLAY_DATETIME_FORMAT = "%d/%m/%Y %H:%M"
 API_FULL_START_DATE = date(2026, 1, 1)
 TABLE_PREVIEW_ROW_LIMIT = 500
-CALCULATION_SCHEMA_VERSION = "2026-06-25-dynamic-lub-oil-consumption-sample-v1"
+CALCULATION_SCHEMA_VERSION = "2026-10-05-vessel-recovery-mixed-dates-v2"
 
 
 
@@ -1310,6 +1310,7 @@ def default_report_window(today: date | None = None) -> tuple[date, date]:
 def build_odata_url(
     start_date: date,
     end_date_exclusive: date | None = None,
+    selected_vessels: list[str] | None = None,
 ) -> str:
     """Build a bounded OData request when an end date is supplied.
 
@@ -1337,6 +1338,11 @@ def build_odata_url(
             f"DateTime'{end_date_exclusive.strftime('%Y-%m-%d')}'"
         )
 
+    if selected_vessels:
+        names = [name.strip().lower().replace("'", "''") for name in selected_vessels]
+        filter_text += " and (" + " or ".join(
+            f"tolower(ShipName) eq '{name}'" for name in names
+        ) + ")"
     params = {
         "$filter": filter_text,
         "$select": ",".join(SOURCE_COLUMNS),
@@ -1400,11 +1406,13 @@ def fetch_report_data(
     start_date: date,
     max_duration_seconds: int | None = None,
     end_date_exclusive: date | None = None,
+    selected_vessels: list[str] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Fetch one bounded or unbounded OData pagination chain."""
     started_at = time.perf_counter()
-    next_url = build_odata_url(start_date, end_date_exclusive)
+    next_url = build_odata_url(start_date, end_date_exclusive, selected_vessels)
     kept_rows: list[dict[str, Any]] = []
+    source_audit = {}
     seen_urls: set[str] = set()
     pages = 0
     total_bytes = 0
@@ -1426,7 +1434,7 @@ def fetch_report_data(
                     f"Marorka refresh exceeded the {max_duration_seconds // 60}-minute safety limit."
                 )
             if next_url in seen_urls:
-                break
+                raise RuntimeError("Repeated OData pagination link; incomplete refresh was not published.")
             seen_urls.add(next_url)
 
             response = request_with_retry(
@@ -1441,6 +1449,11 @@ def fetch_report_data(
             pages += 1
 
             page_rows, next_link = extract_odata_page(response.json())
+            if selected_vessels:
+                # Check provider filtering locally before updating any shared data.
+                page_rows = [row for row in page_rows if normalize_text(row.get("ShipName", ""))
+                             in {normalize_text(v) for v in selected_vessels}]
+                update_source_audit(source_audit, page_rows)
             scanned_rows += len(page_rows)
             kept_rows.extend(compact_odata_rows(page_rows))
 
@@ -1468,6 +1481,7 @@ def fetch_report_data(
     metadata = {
         "loaded_at_utc": loaded_at_utc.strftime("%d-%m-%Y %H:%M:%S UTC"),
         "loaded_at_local": local_time_label(loaded_at_utc),
+        "source_audit": source_audit,
         "rows": int(len(result_df)),
         "kept_rows": int(len(result_df)),
         "api_compact_rows_before_window_trim": api_compact_rows,
@@ -1509,7 +1523,7 @@ def iter_refresh_date_windows(
 
 
 def deduplicate_compact_raw_rows(df: pd.DataFrame) -> pd.DataFrame:
-    """Deduplicate compact long-form rows by report/value identity."""
+    """Deduplicate compact rows by vessel/report/value identity."""
     if df.empty:
         return rows_to_dataframe([])
 
@@ -1525,12 +1539,13 @@ def deduplicate_compact_raw_rows(df: pd.DataFrame) -> pd.DataFrame:
 
     with_id = work.loc[has_report_id].copy()
     if not with_id.empty:
+        with_id["_ship_key"] = with_id["ShipName"].map(normalize_text)
         with_id["_report_id_key"] = report_id_key.loc[has_report_id]
         with_id["_value_key"] = value_key.loc[has_report_id]
         with_id = with_id.drop_duplicates(
-            ["_report_id_key", "_value_key"],
+            ["_ship_key", "_report_id_key", "_value_key"],
             keep="last",
-        ).drop(columns=["_report_id_key", "_value_key"])
+        ).drop(columns=["_ship_key", "_report_id_key", "_value_key"])
 
     without_id = work.loc[~has_report_id].drop_duplicates(
         SOURCE_COLUMNS,
@@ -1550,6 +1565,7 @@ def fetch_report_data_in_chunks(
     chunk_days: int,
     max_duration_seconds: int,
     refresh_mode: str,
+    selected_vessels: list[str] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Fetch a large period as independent bounded OData pagination chains.
 
@@ -1585,6 +1601,7 @@ def fetch_report_data_in_chunks(
     total_downloaded_mb = 0.0
     first_url = "-"
     chunk_page_counts: list[int] = []
+    source_audit = {}
 
     for chunk_index, (window_start, window_end) in enumerate(windows, start=1):
         elapsed_seconds = time.perf_counter() - started_at
@@ -1616,6 +1633,7 @@ def fetch_report_data_in_chunks(
             start_date=window_start,
             end_date_exclusive=window_end,
             max_duration_seconds=remaining_seconds,
+            selected_vessels=selected_vessels,
         )
         if chunk_metadata.get("hit_page_limit"):
             raise RuntimeError(
@@ -1628,6 +1646,7 @@ def fetch_report_data_in_chunks(
 
         if first_url == "-":
             first_url = str(chunk_metadata.get("first_url", "-"))
+        merge_source_audit(source_audit, chunk_metadata.get("source_audit", {}))
         frames.append(chunk_df)
         chunk_pages = int(chunk_metadata.get("pages", 0) or 0)
         chunk_page_counts.append(chunk_pages)
@@ -1654,6 +1673,7 @@ def fetch_report_data_in_chunks(
     metadata = {
         "loaded_at_utc": loaded_at_utc.strftime("%d-%m-%Y %H:%M:%S UTC"),
         "loaded_at_local": local_time_label(loaded_at_utc),
+        "source_audit": source_audit,
         "rows": int(len(combined)),
         "kept_rows": int(len(combined)),
         "scanned_rows": total_scanned_rows,
@@ -1724,7 +1744,42 @@ def parse_datetime_series(series: pd.Series) -> pd.Series:
         )
         parsed = parsed.mask(missing_mask, dotnet_parsed)
 
+    # Pandas infers one format per Series. Retry unresolved non-.NET strings
+    # individually so ISO strings with/without fractions or offsets all survive.
+    unresolved = parsed.isna() & series.notna()
+    if unresolved.any():
+        retries = series.loc[unresolved].map(
+            lambda value: pd.to_datetime(value, errors="coerce", utc=True)
+        )
+        parsed.loc[unresolved] = pd.to_datetime(retries, errors="coerce", utc=True)
     return parsed
+
+
+
+def update_source_audit(audit: dict, rows: list[dict]) -> None:
+    if not rows:
+        return
+    frame = rows_to_dataframe(rows)
+    for vessel, group in frame.groupby("ShipName", dropna=False):
+        ends = parse_datetime_series(group["EndDateTimeGMT"])
+        latest = ends.max().isoformat() if ends.notna().any() else ""
+        report = {str(vessel): {
+            "source_rows": len(group), "latest_source_end_utc": latest,
+            "report_types": group["ReportType"].fillna("(missing)").value_counts().to_dict(),
+            "value_descriptions": group["ValueDescription"].fillna("(missing)").value_counts().to_dict(),
+        }}
+        merge_source_audit(audit, report)
+
+
+def merge_source_audit(audit: dict, incoming: dict) -> None:
+    for vessel, item in incoming.items():
+        entry = audit.setdefault(vessel, {"source_rows": 0, "latest_source_end_utc": "",
+                                         "report_types": {}, "value_descriptions": {}})
+        entry["source_rows"] += int(item["source_rows"])
+        entry["latest_source_end_utc"] = max(entry["latest_source_end_utc"], item["latest_source_end_utc"])
+        for field in ("report_types", "value_descriptions"):
+            for name, count in item[field].items():
+                entry[field][name] = entry[field].get(name, 0) + int(count)
 
 
 def parse_numeric_value(value: Any) -> Any:
@@ -3000,10 +3055,13 @@ def sidebar_controls() -> tuple[date, date, str, list[str], bool]:
             f"Refresh will call the API and may take a while.\n\n"
         	f"Last updated data was on: {last_load_display} LT")
         
+        recovery = st.sidebar.checkbox("Recover selected vessels from January", value=False,
+            help="Fetches this year's reports for the selected vessels and merges them into the shared snapshot. Existing history is retained.")
         col1, col2 = st.sidebar.columns(2)
         
         if col1.button("Confirm"):
             refresh = True
+            st.session_state["recover_selected_vessels"] = recovery
             st.session_state["confirm_api_refresh"] = False
                 
         if col2.button("Cancel"):
@@ -3810,33 +3868,12 @@ def merge_incremental_raw_data(
     fresh_raw_df: pd.DataFrame,
     refresh_start_date: date,
 ) -> pd.DataFrame:
-    """Replace the overlap window, then deduplicate by report/value identity."""
+    """Upsert returned values; an absent row is not proof of source deletion."""
     existing = normalize_raw_snapshot_dataframe(existing_raw_df)
     fresh = normalize_raw_snapshot_dataframe(fresh_raw_df)
-
-    existing_dates = parse_datetime_series(existing["StartDateTimeGMT"])
-    refresh_start_timestamp = pd.Timestamp(refresh_start_date, tz="UTC")
-    keep_old_mask = existing_dates.isna() | existing_dates.le(refresh_start_timestamp)
-    merged = pd.concat([existing.loc[keep_old_mask], fresh], ignore_index=True)
-
-    report_id_key = merged["ReportId"].astype("string").fillna("")
-    value_key = merged["ValueDescription"].map(normalize_text)
-    has_report_id = report_id_key.str.len().gt(0)
-
-    with_id = merged.loc[has_report_id].copy()
-    with_id["_report_id_key"] = report_id_key.loc[has_report_id]
-    with_id["_value_key"] = value_key.loc[has_report_id]
-    with_id = with_id.drop_duplicates(
-        ["_report_id_key", "_value_key"],
-        keep="last",
-    ).drop(columns=["_report_id_key", "_value_key"])
-
-    without_id = merged.loc[~has_report_id].drop_duplicates(
-        SOURCE_COLUMNS,
-        keep="last",
-    )
-    merged = pd.concat([with_id, without_id], ignore_index=True)
-    return normalize_raw_snapshot_dataframe(merged)
+    return normalize_raw_snapshot_dataframe(deduplicate_compact_raw_rows(
+        pd.concat([existing, fresh], ignore_index=True)
+    ))
 
 
 def refresh_persistent_snapshot(
@@ -3846,6 +3883,7 @@ def refresh_persistent_snapshot(
     auth_method: str,
     *,
     full_refresh: bool,
+    recovery_vessels: list[str] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any], dict[str, Any]]:
     """Refresh once, transform once, persist both layers, and return prepared data.
 
@@ -3884,6 +3922,12 @@ def refresh_persistent_snapshot(
             )
             refresh_mode = "incremental"
 
+    if recovery_vessels:
+        if existing_raw_df is None:
+            raise RuntimeError("Vessel recovery requires an existing raw snapshot. Run the normal initial warmup first.")
+        api_start_date = API_FULL_START_DATE
+        refresh_mode = "vessel_recovery"
+
     refresh_max_minutes = read_int_secret(
         "MARORKA_FULL_REFRESH_MAX_MINUTES"
         if refresh_mode == "full"
@@ -3911,6 +3955,7 @@ def refresh_persistent_snapshot(
         chunk_days=chunk_days,
         max_duration_seconds=refresh_max_minutes * 60,
         refresh_mode=refresh_mode,
+        selected_vessels=recovery_vessels,
     )
 
     if api_metadata.get("hit_page_limit"):
@@ -3924,7 +3969,7 @@ def refresh_persistent_snapshot(
             "The previous prepared snapshot was kept unchanged."
         )
 
-    if refresh_mode == "incremental" and existing_raw_df is not None:
+    if refresh_mode in {"incremental", "vessel_recovery"} and existing_raw_df is not None:
         combined_raw_df = merge_incremental_raw_data(
             existing_raw_df,
             fresh_raw_df,
@@ -3933,6 +3978,11 @@ def refresh_persistent_snapshot(
     else:
         combined_raw_df = normalize_raw_snapshot_dataframe(fresh_raw_df)
 
+    if recovery_vessels and fresh_raw_df.empty:
+        raise RuntimeError(
+            "The vessel query returned source rows but no supported KPI values. "
+            "The previous snapshot was kept. Source audit: " + json.dumps(api_metadata.get("source_audit", {}))
+        )
     if combined_raw_df.empty:
         raise RuntimeError(
             "The refreshed compact dataset is empty. The previous snapshot was kept."
@@ -3966,6 +4016,7 @@ def refresh_persistent_snapshot(
             "transformed_rows": int(len(transformed_df)),
             "transform_seconds": transform_seconds,
             "refresh_mode": refresh_mode,
+            "recovery_vessels": recovery_vessels or [],
             "refresh_api_start_date": api_start_date.isoformat(),
             "refresh_kept_rows": int(len(fresh_raw_df)),
             "refresh_scanned_rows": int(api_metadata.get("scanned_rows", 0) or 0),
@@ -4302,6 +4353,7 @@ def main() -> None:
                             token,
                             auth_method,
                             full_refresh=False,
+                            recovery_vessels=(selected_vessels if st.session_state.pop("recover_selected_vessels", False) else None),
                         )
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else "unknown"
@@ -4548,8 +4600,8 @@ def main() -> None:
                     "Selected vessels",
                     "API start date",
                     "API end date",
-                    "Dashboard selected start",
-                    "Dashboard selected end",
+                    "Earliest selected report start (UTC)",
+                    "Latest selected report start (UTC)",
                     "API loaded at",
                     "API loaded local time",
                     "API loaded from start date",
@@ -4605,6 +4657,19 @@ def main() -> None:
             }
         )
         st.dataframe(diagnostics, use_container_width=True, hide_index=True)
+        latest_ends = parse_datetime_series(df["EndDateTimeGMT"])
+        st.write("Latest selected report end (UTC):", str(latest_ends.max()))
+        coverage_rows = df.assign(_coverage_end=latest_ends).sort_values("_coverage_end", ascending=False)
+        st.caption("Latest selected reports before KPI filters. Compare both start and end timestamps with the source.")
+        st.dataframe(coverage_rows[["ShipName", "ReportId", "ReportType", "StartDateTimeGMT", "EndDateTimeGMT"]].head(10),
+                     use_container_width=True, hide_index=True)
+        st.caption("API refresh time is when the request ran; report timestamps show the actual data coverage.")
+        if metadata.get("source_audit"):
+            with st.expander("Last vessel recovery: source coverage before KPI filtering"):
+                st.caption("Source row counts include one-day request overlaps; they are not unique report counts.")
+                st.json(metadata["source_audit"])
+        st.download_button("Download refresh diagnostics", json.dumps(metadata, default=str, indent=2),
+                           "performance_refresh_diagnostics.json", "application/json")
 
         with st.expander("First API URL", expanded=False):
             st.code(metadata.get("first_url", "-"), language="text")
