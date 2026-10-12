@@ -112,6 +112,7 @@ VALUE_ALIASES = {
         "DG 1 Running Hours",
         "Diesel Generator 1 Running Hours [hh:mm]",
         "Diesel Generator 1 Running Hours",
+        "DG1 Running Time [h] (h)",
     ],
     "DG2 Running Hours [hh:mm]": [
         "DG2 Running Hours [hh:mm]",
@@ -120,6 +121,7 @@ VALUE_ALIASES = {
         "DG 2 Running Hours",
         "Diesel Generator 2 Running Hours [hh:mm]",
         "Diesel Generator 2 Running Hours",
+        "DG2 Running Time [h] (h)",
     ],
     "DG3 Running Hours [hh:mm]": [
         "DG3 Running Hours [hh:mm]",
@@ -128,6 +130,7 @@ VALUE_ALIASES = {
         "DG 3 Running Hours",
         "Diesel Generator 3 Running Hours [hh:mm]",
         "Diesel Generator 3 Running Hours",
+        "DG3 Running Time [h] (h)",
     ],
     "DG4 Running Hours [hh:mm]": [
         "DG4 Running Hours [hh:mm]",
@@ -136,6 +139,7 @@ VALUE_ALIASES = {
         "DG 4 Running Hours",
         "Diesel Generator 4 Running Hours [hh:mm]",
         "Diesel Generator 4 Running Hours",
+        "DG4 Running Time [h] (h)",
     ],
     "MELO ROB [ltr]": ["MELO ROB [ltr]"],
     "MELO Received [ltr]": ["MELO Received [ltr]"],
