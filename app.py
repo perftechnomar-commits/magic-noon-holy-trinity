@@ -3083,7 +3083,7 @@ def sidebar_controls() -> tuple[date, date, str, list[str], bool]:
 DATE_PERIOD_OPTIONS = [
     "Current Month",
     "Previous Month",
-    "Rolling 2 Months + Current Month",
+    "Current + Previous 2 Months",
     "Previous 3 Months",
     "YTD",
     "Last 7 Days",
@@ -3137,7 +3137,7 @@ def resolve_date_period(
         current_month_start = _month_start(reference_date)
         selected_end = current_month_start - timedelta(days=1)
         selected_start = _subtract_months_month_start(current_month_start, 3)
-    elif preset == "Rolling 2 Months + Current Month":
+    elif preset == "Current + Previous 2 Months":
         # Two previous calendar months plus the current month through today.
         selected_start = _subtract_months_month_start(reference_date, 2)
         selected_end = reference_date
